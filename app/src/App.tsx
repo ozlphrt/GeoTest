@@ -99,8 +99,6 @@ function App() {
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   )
-  const [mapCenter, setMapCenter] = useState({ lng: 0, lat: 0, zoom: 1.5 })
-  const [questionNumber, setQuestionNumber] = useState(1)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<{
     status: 'correct' | 'incorrect' | null
@@ -285,11 +283,6 @@ function App() {
 
     mapRef.current = map
 
-    const updateCenter = () => {
-      const center = map.getCenter()
-      setMapCenter({ lng: center.lng, lat: center.lat, zoom: map.getZoom() })
-    }
-
     map.on('load', () => {
       map.addSource('countries', {
         type: 'geojson',
@@ -385,9 +378,6 @@ function App() {
         },
       })
     })
-
-    map.on('move', updateCenter)
-    updateCenter()
 
     return () => {
       map.remove()
@@ -622,7 +612,6 @@ function App() {
       typeIndexRef,
     })
     setCurrentQuestion(question)
-    setQuestionNumber((prev) => prev + 1)
   }
 
   const flagSrc =
@@ -713,23 +702,6 @@ function App() {
 }
 
 export default App
-
-function formatModeLabel(type: QuestionType) {
-  if (type === 'map_tap') return 'Map Tap'
-  if (type === 'flag_match') return 'Flag Match'
-  if (type === 'capital_mcq') return 'Capital'
-  if (type === 'neighbor_mcq') return 'Neighbors'
-  if (type === 'currency_mcq') return 'Currency'
-  if (type === 'city_mcq') return 'City'
-  if (type === 'river_mcq') return 'Rivers'
-  if (type === 'language_mcq') return 'Language'
-  if (type === 'population_pair') return 'Population'
-  if (type === 'landlocked_mcq') return 'Landlocked'
-  if (type === 'peak_mcq') return 'Peaks'
-  if (type === 'range_mcq') return 'Ranges'
-  if (type === 'region_mcq') return 'Regions'
-  return 'Area'
-}
 
 function buildOptionClassName(
   index: number,

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GeoTest Map Styles</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #0b0f14;
+        color: #f3f5f7;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 1.4rem;
+      }
+      p {
+        margin: 0 0 20px;
+        color: #c5c9d1;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: #111722;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+      }
+      .card header {
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+      .map {
+        height: 220px;
+      }
+      .note {
+        font-size: 0.8rem;
+        color: #a3a9b4;
+        padding: 10px 14px 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Choose a Map Style</h1>
+    <p>Pick the tone you want for GeoTest. These are no-label styles.</p>
+    <div class="grid">
+      <section class="card">
+        <header>CARTO Dark Matter (no labels)</header>
+        <div id="map-dark-matter" class="map"></div>
+        <div class="note">High contrast, dark.</div>
+      </section>
+      <section class="card">
+        <header>Stadia Alidade Smooth Dark (no labels)</header>
+        <div id="map-stadia-dark" class="map"></div>
+        <div class="note">Smooth dark, slightly softer.</div>
+      </section>
+      <section class="card">
+        <header>CARTO Voyager (no labels)</header>
+        <div id="map-voyager" class="map"></div>
+        <div class="note">Current option, lighter.</div>
+      </section>
+    </div>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script>
+      const center = [20, 0]
+      const zoom = 1.4
+
+      const darkMatter = L.map('map-dark-matter', { zoomControl: false, attributionControl: true }).setView(
+        center,
+        zoom,
+      )
+      L.tileLayer('https://basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors, © CARTO',
+      }).addTo(darkMatter)
+
+      const stadiaDark = L.map('map-stadia-dark', { zoomControl: false, attributionControl: true }).setView(
+        center,
+        zoom,
+      )
+      L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors, © Stadia Maps',
+      }).addTo(stadiaDark)
+
+      const voyager = L.map('map-voyager', { zoomControl: false, attributionControl: true }).setView(
+        center,
+        zoom,
+      )
+      L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors, © CARTO',
+      }).addTo(voyager)
+    </script>
+  </body>
+</html>

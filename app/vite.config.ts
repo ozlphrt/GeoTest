@@ -33,15 +33,16 @@ export default defineConfig({
         theme_color: '#0e1116',
         background_color: '#0e1116',
         display: 'standalone',
-        start_url: '/',
+        start_url: '/GeoTest/',
+        scope: '/GeoTest/',
         icons: [
           {
-            src: '/icons/192.png',
+            src: '/GeoTest/icons/192.png',
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: '/icons/512.png',
+            src: '/GeoTest/icons/512.png',
             sizes: '512x512',
             type: 'image/png',
           },

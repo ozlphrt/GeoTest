@@ -614,10 +614,11 @@ function App() {
     setCurrentQuestion(question)
   }
 
-  const flagSrc =
+  const flagSrc = resolvePublicAsset(
     currentQuestion?.flagSvg && !flagFallbackRef.current
       ? currentQuestion.flagSvg
-      : currentQuestion?.flagPng ?? null
+      : currentQuestion?.flagPng ?? null,
+  )
 
   const handleFlagError = () => {
     flagFallbackRef.current = true
@@ -1237,6 +1238,13 @@ function buildAnswerDetails(country: CountryMeta) {
     lines.push(`City: ${country.cities[0]}`)
   }
   return lines
+}
+
+function resolvePublicAsset(path: string | null | undefined) {
+  if (!path) return null
+  if (!path.startsWith('/')) return path
+  const baseUrl = import.meta.env.BASE_URL || '/'
+  return `${baseUrl}${path.slice(1)}`
 }
 
 function computeBBox(geometry: GeoFeature['geometry']): [number, number, number, number] {

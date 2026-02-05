@@ -214,6 +214,7 @@ function App() {
       queueRef,
       typeIndexRef,
       level,
+      idPrefix: `${Date.now()}-${Math.random().toString(36).substring(7)}`,
     })
     setCurrentQuestion(question)
   }, [countryPools, featureIndex, level])
@@ -251,7 +252,8 @@ function App() {
       featureIndex,
       queueRef,
       typeIndexRef,
-      level,
+      level: 1,
+      idPrefix: `reset-${Date.now()}`,
     })
     setCurrentQuestion(question)
   }
@@ -750,8 +752,9 @@ function App() {
     handleNext()
   }, [countryPools, featureIndex, currentQuestion, handleNext])
 
-  const handleOptionSelect = (index: number) => {
+  const handleOptionSelect = (index: number, event: React.MouseEvent<HTMLButtonElement>) => {
     if (!currentQuestion || currentQuestion.correctIndex === undefined) return
+    event.currentTarget.blur()
     setSelectedIndex(index)
     const isCorrect = index === currentQuestion.correctIndex
     const correctCca3 =
@@ -1085,7 +1088,7 @@ function App() {
                         shakeIndex,
                       )}
                       key={option}
-                      onClick={() => handleOptionSelect(index)}
+                      onClick={(e) => handleOptionSelect(index, e)}
                       style={{ visibility: removedIndices.includes(index) ? 'hidden' : 'visible' }}
                     >
                       {option}
@@ -1309,6 +1312,7 @@ function buildNextQuestion(args: {
   queueRef: MutableRefObject<Record<QuestionType, string[]>>
   typeIndexRef: MutableRefObject<number>
   level: number
+  idPrefix: string
 }) {
   const allTypes: QuestionType[] = [
     'map_tap',
@@ -1351,7 +1355,10 @@ function buildNextQuestion(args: {
     const type = types[args.typeIndexRef.current % types.length]
     args.typeIndexRef.current += 1
     const question = buildQuestionForType(type, args)
-    if (question) return question
+    if (question) {
+      question.id = `${args.idPrefix}-${question.id}`
+      return question
+    }
   }
 
   return {

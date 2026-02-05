@@ -345,9 +345,11 @@ body.light-mode .option {
   border: 1px solid rgba(30, 41, 59, 0.2);
 }
 
-.option:hover {
-  transform: translateY(-1px);
-  border-color: var(--text-dim);
+@media (hover: hover) {
+  .option:hover {
+    transform: translateY(-1px);
+    border-color: var(--text-dim);
+  }
 }
 
 .option.correct {
@@ -512,10 +514,12 @@ body.light-mode .compact-flag {
   font-weight: 900;
 }
 
-.powerup-btn:hover:not(:disabled) {
-  background: var(--border-glass);
-  border-color: var(--text-dim);
-  color: var(--text-main);
+@media (hover: hover) {
+  .powerup-btn:hover:not(:disabled) {
+    background: var(--border-glass);
+    border-color: var(--text-dim);
+    color: var(--text-main);
+  }
 }
 
 .powerup-btn:disabled {
@@ -645,9 +649,11 @@ body.light-mode .compact-flag {
   transition: all 0.2s ease;
 }
 
-.theme-toggle:hover {
-  background: var(--border-glass);
-  transform: scale(1.05);
+@media (hover: hover) {
+  .theme-toggle:hover {
+    background: var(--border-glass);
+    transform: scale(1.05);
+  }
 }
 
 /* Animations & Visual Juice */

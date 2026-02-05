@@ -1175,7 +1175,7 @@ function App() {
                   You ran out of lives!<br />
                   Final Score: <strong>{formatScore(score)}</strong>
                 </div>
-                <button className="option correct" onClick={restartGame} style={{ width: '100%', justifyContent: 'center' }}>
+                <button className="option correct" onClick={restartGame} style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
                   Try Again
                 </button>
               </div>
@@ -1203,38 +1203,37 @@ function playGameSound(type: 'correct' | 'incorrect' | 'levelup' | 'powerup', mu
 
     if (type === 'correct') {
       osc.type = 'sine'
-      osc.frequency.setValueAtTime(440, now)
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.1)
-      gain.gain.setValueAtTime(0.1, now)
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2)
+      osc.frequency.setValueAtTime(880, now)
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.05)
+      gain.gain.setValueAtTime(0.08, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08)
       osc.start(now)
-      osc.stop(now + 0.2)
+      osc.stop(now + 0.08)
     } else if (type === 'incorrect') {
-      osc.type = 'square'
-      osc.frequency.setValueAtTime(150, now)
-      osc.frequency.linearRampToValueAtTime(50, now + 0.3)
-      gain.gain.setValueAtTime(0.05, now)
-      gain.gain.linearRampToValueAtTime(0.01, now + 0.3)
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(180, now)
+      osc.frequency.linearRampToValueAtTime(100, now + 0.1)
+      gain.gain.setValueAtTime(0.06, now)
+      gain.gain.linearRampToValueAtTime(0.001, now + 0.1)
       osc.start(now)
-      osc.stop(now + 0.3)
+      osc.stop(now + 0.1)
     } else if (type === 'levelup') {
       osc.type = 'sine'
-      osc.frequency.setValueAtTime(523.25, now)
-      osc.frequency.setValueAtTime(659.25, now + 0.1)
-      osc.frequency.setValueAtTime(783.99, now + 0.2)
-      osc.frequency.setValueAtTime(1046.50, now + 0.3)
-      gain.gain.setValueAtTime(0.1, now)
-      gain.gain.linearRampToValueAtTime(0.01, now + 0.5)
+      // Ascending double blip
+      osc.frequency.setValueAtTime(660, now)
+      osc.frequency.setValueAtTime(990, now + 0.1)
+      gain.gain.setValueAtTime(0.08, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2)
       osc.start(now)
-      osc.stop(now + 0.5)
+      osc.stop(now + 0.2)
     } else if (type === 'powerup') {
       osc.type = 'triangle'
-      osc.frequency.setValueAtTime(200, now)
-      osc.frequency.linearRampToValueAtTime(1200, now + 0.4)
-      gain.gain.setValueAtTime(0.08, now)
-      gain.gain.linearRampToValueAtTime(0.01, now + 0.4)
+      osc.frequency.setValueAtTime(400, now)
+      osc.frequency.exponentialRampToValueAtTime(1000, now + 0.1)
+      gain.gain.setValueAtTime(0.05, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12)
       osc.start(now)
-      osc.stop(now + 0.4)
+      osc.stop(now + 0.12)
     }
 
     osc.connect(gain)
@@ -1264,12 +1263,35 @@ function buildOptionClassName(
 function pickMetricPair(pool: CountryMeta[], key: 'population' | 'area') {
   if (pool.length < 2) return null
   const shuffled = shuffle(pool)
+
+  // Try to find a pair within a reasonable ratio (e.g. 1.05x to 5x larger)
+  // This makes the choice much harder than comparing a giant to a tiny island.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const a = shuffled[Math.floor(Math.random() * shuffled.length)]
+    const b = shuffled[Math.floor(Math.random() * shuffled.length)]
+
+    if (a.cca3 === b.cca3) continue
+
+    const valA = a[key] ?? 0
+    const valB = b[key] ?? 0
+    if (valA === 0 || valB === 0) continue
+
+    const ratio = Math.max(valA, valB) / Math.min(valA, valB)
+
+    // Target ratio: between 1.05 (too close is confusing) and 5.0
+    if (ratio > 1.05 && ratio < 5.0) {
+      return { a, b }
+    }
+  }
+
+  // Fallback: Just return any two different countries with non-zero values
   for (let i = 0; i < shuffled.length - 1; i += 1) {
     for (let j = i + 1; j < shuffled.length; j += 1) {
       const a = shuffled[i]
       const b = shuffled[j]
-      if ((a[key] ?? 0) === (b[key] ?? 0)) continue
-      return { a, b }
+      if ((a[key] ?? 0) > 0 && (b[key] ?? 0) > 0 && a[key] !== b[key]) {
+        return { a, b }
+      }
     }
   }
   return null
@@ -1442,12 +1464,36 @@ function buildQuestionForType(
       .map((code) => args.pools.countriesByCca3.get(code))
       .filter(Boolean) as CountryMeta[]
     if (!neighbors.length) return null
+
     const correctNeighbor = neighbors[Math.floor(Math.random() * neighbors.length)]
     const optionCandidates = [{ name: correctNeighbor.name, cca3: correctNeighbor.cca3 }]
-    const distractorsPool = getPoolForLevel(args.pools.countries, args.level)
-    const distractors = shuffle(distractorsPool).filter(
-      (item) => item.cca3 !== country.cca3 && !country.borders.includes(item.cca3 ?? ''),
-    )
+
+    // Difficulty boost: Pick distractors from the same area
+    const isExcluded = (c: CountryMeta) =>
+      c.cca3 === country.cca3 ||
+      country.borders.includes(c.cca3 || '') ||
+      c.cca3 === correctNeighbor.cca3
+
+    // 1. Same subregion
+    const subregionDistractors = shuffle(args.pools.countries.filter(
+      (c) => c.subregion === country.subregion && !isExcluded(c)
+    ))
+
+    // 2. Same region (continent)
+    const regionDistractors = shuffle(args.pools.countries.filter(
+      (c) => c.region === country.region && !isExcluded(c) && !subregionDistractors.find(s => s.cca3 === c.cca3)
+    ))
+
+    // 3. Fallback to general pool
+    const generalPool = getPoolForLevel(args.pools.countries, args.level)
+    const globalDistractors = shuffle(generalPool.filter(
+      (c) => !isExcluded(c) &&
+        !subregionDistractors.find(s => s.cca3 === c.cca3) &&
+        !regionDistractors.find(r => r.cca3 === c.cca3)
+    ))
+
+    const distractors = [...subregionDistractors, ...regionDistractors, ...globalDistractors]
+
     for (const item of distractors) {
       optionCandidates.push({ name: item.name, cca3: item.cca3 })
       if (optionCandidates.length >= 4) break

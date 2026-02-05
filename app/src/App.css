@@ -86,22 +86,25 @@ body.light-mode .app::before {
 .scoreboard {
   position: absolute;
   top: 12px;
-  left: 20px;
-  right: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 40px);
   background: var(--bg-scoreboard);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
-  padding: 10px 24px;
-  border-radius: 24px;
+  padding: 8px 16px;
+  border-radius: 20px;
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   z-index: 10;
   border: 1px solid var(--border-scoreboard);
   box-shadow:
     0 10px 40px var(--shadow-main),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
 }
 
 body.light-mode .scoreboard {
@@ -117,24 +120,26 @@ body.light-mode .scoreboard {
   flex-direction: column;
   align-items: center;
   gap: 0;
+  flex-shrink: 0;
 }
 
 .stat-label {
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   font-weight: 700;
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   line-height: 1;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .stat-value {
-  font-size: 1.6rem;
+  font-size: 1.4rem;
   font-weight: 800;
   color: var(--text-main);
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .stat-value.accent {
@@ -142,7 +147,7 @@ body.light-mode .scoreboard {
 }
 
 .stat-sub {
-  font-size: 0.6rem;
+  font-size: 0.55rem;
   font-weight: 700;
   color: var(--text-dimmer);
   text-transform: uppercase;
@@ -151,20 +156,57 @@ body.light-mode .scoreboard {
 
 .divider {
   width: 1px;
-  height: 28px;
+  height: 24px;
   background: var(--border-glass);
-  opacity: 0.6;
+  opacity: 0.4;
+  flex-shrink: 0;
 }
 
 .hearts-container {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  flex-shrink: 0;
+  padding-left: 4px;
 }
 
 .pulse-heart {
   animation: heart-beat 2.5s infinite ease-in-out;
   filter: drop-shadow(0 0 4px rgba(255, 77, 77, 0.2));
+}
+
+@media (max-width: 600px) {
+  .scoreboard {
+    gap: 12px;
+    padding: 6px 14px;
+  }
+
+  .stat-value {
+    font-size: 1.2rem;
+  }
+
+  .divider {
+    height: 20px;
+  }
+}
+
+@media (max-width: 400px) {
+  .scoreboard {
+    gap: 8px;
+    padding: 6px 10px;
+  }
+
+  .stat-label {
+    font-size: 0.55rem;
+  }
+
+  .stat-value {
+    font-size: 1rem;
+  }
+
+  .stat-sub {
+    font-size: 0.5rem;
+  }
 }
 
 @keyframes heart-beat {
@@ -181,20 +223,20 @@ body.light-mode .scoreboard {
 
 .quiz-panel {
   position: absolute;
-  bottom: 24px;
-  bottom: calc(24px + env(safe-area-inset-bottom));
+  bottom: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
-  width: 92%;
-  max-width: 520px;
+  width: 95%;
+  max-width: 480px;
   background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  padding: 24px;
-  border-radius: 24px;
+  padding: 12px 20px;
+  border-radius: 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
   text-align: center;
   border: none;
   box-shadow: none;
@@ -213,11 +255,12 @@ body.light-mode .quiz-panel {
 }
 
 .quiz-panel.compact {
-  padding: 12px 16px;
+  padding: 8px 16px;
+  gap: 8px;
 }
 
 .compact-prompt {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: 0.01em;
   color: var(--text-main);
@@ -226,36 +269,37 @@ body.light-mode .quiz-panel {
 .quiz-header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
+  gap: 2px;
+  margin-bottom: 8px;
 }
 
 .quiz-title {
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 800;
   letter-spacing: 0.02em;
   color: var(--text-main);
 }
 
 .quiz-subtitle {
-  font-size: 1.3rem;
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--text-dim);
 }
 
 .quiz-prompt {
-  font-size: 1.6rem;
-  font-weight: 600;
-  margin-bottom: 12px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 4px;
   color: var(--text-main);
+  line-height: 1.2;
 }
 
 .flag-preview {
   width: 100%;
-  height: 140px;
+  height: 130px;
   border-radius: 0;
   border: none;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   background: transparent;
   display: flex;
   align-items: center;
@@ -265,19 +309,23 @@ body.light-mode .quiz-panel {
 }
 
 .flag-preview img {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: 100%;
   object-fit: contain;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
+  border-radius: 8px;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.25),
+    0 2px 6px rgba(0, 0, 0, 0.15);
+  background: white;
+  border: 1px solid var(--border-glass);
 }
 
 .options {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .option {
@@ -285,8 +333,8 @@ body.light-mode .quiz-panel {
   color: var(--text-main);
   border: 1px solid var(--border-glass);
   border-radius: 12px;
-  padding: 6px 18px;
-  font-size: 1.35rem;
+  padding: 6px 14px;
+  font-size: 1.2rem;
   font-weight: 600;
   text-align: left;
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
@@ -393,7 +441,17 @@ body.light-mode .option.incorrect {
   height: 40px;
   object-fit: cover;
   border-radius: 6px;
-  box-shadow: 0 4px 12px var(--shadow-main);
+  box-shadow:
+    0 4px 12px var(--shadow-main),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  background: white;
+}
+
+body.light-mode .compact-flag {
+  box-shadow:
+    0 4px 15px rgba(30, 41, 59, 0.2),
+    0 1px 2px rgba(30, 41, 59, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .compact-continent {
@@ -768,7 +826,9 @@ body.light-mode .option.incorrect {
   height: 32px;
   object-fit: cover;
   border-radius: 4px;
-  box-shadow: 0 4px 8px var(--shadow-main);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  background: white;
+  border: 1px solid var(--border-glass);
 }
 
 .atlas-item-name {

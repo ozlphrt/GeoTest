@@ -86,6 +86,7 @@ type Question = {
   targetFeature?: FeatureRecord
   targetCca3?: string
   displayCca3s?: string[]
+  continent?: string
 }
 
 function App() {
@@ -104,18 +105,22 @@ function App() {
     status: 'correct' | 'incorrect' | null
     message: string
   }>({ status: null, message: '' })
-  const [answerModal, setAnswerModal] = useState<{
+  const [messageOverlay, setMessageOverlay] = useState<{
     isOpen: boolean
-    title: string
-    body: string
-  }>({ isOpen: false, title: '', body: '' })
+    message: string
+    type: 'correct' | 'incorrect'
+  }>({ isOpen: false, message: '', type: 'incorrect' })
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
   const [featureIndex, setFeatureIndex] = useState<Map<string, FeatureRecord>>(new Map())
   const [riverIndex, setRiverIndex] = useState<Map<string, RiverRecord>>(new Map())
-  const [totalAnswered, setTotalAnswered] = useState(0)
-  const [correctAnswered, setCorrectAnswered] = useState(0)
+  const [score, setScore] = useState(0)
   const [currentStreak, setCurrentStreak] = useState(0)
-  const [bestStreak, setBestStreak] = useState(0)
+  const [hearts, setHearts] = useState(3)
+  const [gameOver, setGameOver] = useState(false)
+  const [removedIndices, setRemovedIndices] = useState<number[]>([])
+  const [hintsLeft, setHintsLeft] = useState(3)
+  const [skipsLeft, setSkipsLeft] = useState(3)
+  const [sessionSeconds, setSessionSeconds] = useState(0)
 
   const countryPools = useMemo(() => {
     const countries = countriesData as CountryMeta[]
@@ -178,6 +183,48 @@ function App() {
     region_mcq: [],
   })
   const typeIndexRef = useRef(0)
+
+  const restartGame = () => {
+    setHearts(3)
+    setGameOver(false)
+    setScore(0)
+    setCurrentStreak(0)
+    setHintsLeft(3)
+    setSkipsLeft(3)
+    setFeedback({ status: null, message: '' })
+    setMessageOverlay({ isOpen: false, message: '', type: 'incorrect' })
+    // Reset queue?
+    queueRef.current = {
+      map_tap: [],
+      flag_match: [],
+      capital_mcq: [],
+      neighbor_mcq: [],
+      currency_mcq: [],
+      city_mcq: [],
+      river_mcq: [],
+      language_mcq: [],
+      population_pair: [],
+      area_pair: [],
+      landlocked_mcq: [],
+      peak_mcq: [],
+      range_mcq: [],
+      region_mcq: [],
+    }
+    const question = buildNextQuestion({
+      pools: countryPools,
+      featureIndex,
+      queueRef,
+      typeIndexRef,
+    })
+    setCurrentQuestion(question)
+  }
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSessionSeconds((s) => s + 1)
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
@@ -389,7 +436,8 @@ function App() {
     setSelectedIndex(null)
     setFeedback({ status: null, message: '' })
     flagFallbackRef.current = false
-    setAnswerModal({ isOpen: false, title: '', body: '' })
+    setMessageOverlay({ isOpen: false, message: '', type: 'incorrect' })
+    setRemovedIndices([])
   }, [currentQuestion?.id])
 
   useEffect(() => {
@@ -428,33 +476,45 @@ function App() {
       const correctName = correctCca3
         ? countryPools.countriesByCca3.get(correctCca3)?.name
         : null
-      const correctCountry = correctCca3
-        ? countryPools.countriesByCca3.get(correctCca3)
-        : null
       setFeedback({
         status: isCorrect ? 'correct' : 'incorrect',
         message: isCorrect
           ? ''
           : clickedName && correctName
-            ? `You tapped ${clickedName}. Correct: ${correctName}.`
+            ? `Mistake! You tapped ${clickedName} (Goal: ${correctName})`
             : correctName
-              ? `Correct: ${correctName}.`
-              : 'Correct answer highlighted.',
+              ? `Correct answer was ${correctName}.`
+              : 'Incorrect area tapped.',
       })
       if (!isCorrect) {
-        const modalTitle = correctName ? `Correct: ${correctName}` : 'Correct answer'
-        const detailLines = correctCountry ? buildAnswerDetails(correctCountry) : []
-        const headerLine = clickedName ? `You tapped ${clickedName}.` : 'Tap the correct country.'
-        const modalBody = [headerLine, ...detailLines].join('\n')
-        setAnswerModal({ isOpen: true, title: modalTitle, body: modalBody })
+        const errorLabel = clickedName ? clickedName : 'WRONG AREA'
+        setMessageOverlay({
+          isOpen: true,
+          message: errorLabel,
+          type: 'incorrect'
+        })
+
+        setHearts((h) => {
+          const next = h - 1
+          if (next <= 0) {
+            setGameOver(true)
+          }
+          return next
+        })
+      } else {
+        setMessageOverlay({ isOpen: true, message: 'CORRECT!', type: 'correct' })
       }
 
       if (isCorrect) {
-        setTotalAnswered((prev) => prev + 1)
-        setCorrectAnswered((prev) => prev + 1)
+        const basePoints = getPointsForQuestion(currentQuestion.type)
+        const points = Math.round(basePoints * (1 + currentStreak * 0.1))
+        setScore((s) => s + points)
+
         setCurrentStreak((prev) => {
           const next = prev + 1
-          setBestStreak((best) => Math.max(best, next))
+          if (next % 5 === 0) {
+            setHearts((h) => Math.min(h + 1, 3))
+          }
           return next
         })
         if (nextTimeoutRef.current) {
@@ -486,7 +546,7 @@ function App() {
     const map = mapRef.current
     if (!map || currentQuestion.type !== 'map_tap' || !currentQuestion.targetFeature) return
     const center = bboxCenter(currentQuestion.targetFeature.bbox)
-    map.flyTo({ center, zoom: 0.85, duration: 900 })
+    map.flyTo({ center, zoom: 0.85, duration: 1500, pitch: 45 })
   }, [currentQuestion])
 
   useEffect(() => {
@@ -516,7 +576,8 @@ function App() {
         [merged[0], merged[1]],
         [merged[2], merged[3]],
       ],
-      { padding: 130, duration: 900, maxZoom: 2.0 },
+
+      { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
     )
   }, [currentQuestion?.id, featureIndex])
 
@@ -533,7 +594,8 @@ function App() {
         [record.bbox[0], record.bbox[1]],
         [record.bbox[2], record.bbox[3]],
       ],
-      { padding: 80, duration: 900 },
+
+      { padding: 80, duration: 1500, pitch: 45 },
     )
   }, [currentQuestion?.id, riverIndex])
 
@@ -564,25 +626,40 @@ function App() {
     const correctCca3 =
       currentQuestion.optionCca3s?.[currentQuestion.correctIndex] ??
       currentQuestion.targetCca3
-    const correctCountry = correctCca3
-      ? countryPools.countriesByCca3.get(correctCca3)
-      : null
-    if (!isCorrect) {
-      const correctOption = currentQuestion.options?.[currentQuestion.correctIndex]
-      const pickedOption = currentQuestion.options?.[index]
-      const modalTitle = correctOption ? `Correct: ${correctOption}` : 'Correct answer'
-      const detailLines = correctCountry ? buildAnswerDetails(correctCountry) : []
-      const headerLine = pickedOption ? `You chose ${pickedOption}.` : 'Review the correct choice.'
-      const modalBody = [headerLine, ...detailLines].join('\n')
-      setAnswerModal({ isOpen: true, title: modalTitle, body: modalBody })
+
+
+    if (isCorrect) {
+      setMessageOverlay({ isOpen: true, message: 'CORRECT!', type: 'correct' })
+      const basePoints = getPointsForQuestion(currentQuestion.type)
+      const points = Math.round(basePoints * (1 + currentStreak * 0.1))
+      setScore((s) => s + points)
+
+      setCurrentStreak((prev) => {
+        const next = prev + 1
+        if (next % 5 === 0) {
+          setHearts((h) => Math.min(h + 1, 3))
+        }
+        return next
+      })
+    } else {
+      const selectedOption = currentQuestion.options?.[index]
+      const errorLabel = selectedOption ? selectedOption : 'INCORRECT'
+
+      setMessageOverlay({
+        isOpen: true,
+        message: errorLabel,
+        type: 'incorrect'
+      })
+
+      setCurrentStreak(0)
+      setHearts((h) => {
+        const next = h - 1
+        if (next <= 0) {
+          setGameOver(true)
+        }
+        return next
+      })
     }
-    setTotalAnswered((prev) => prev + 1)
-    setCorrectAnswered((prev) => (isCorrect ? prev + 1 : prev))
-    setCurrentStreak((prev) => {
-      const next = isCorrect ? prev + 1 : 0
-      setBestStreak((best) => Math.max(best, next))
-      return next
-    })
 
     const selectedCca3 = currentQuestion.optionCca3s?.[index]
     if (correctCca3 && mapRef.current) {
@@ -602,6 +679,27 @@ function App() {
       handleNext()
       nextTimeoutRef.current = null
     }, isCorrect ? 700 : 3000)
+  }
+
+  const handleHint = () => {
+    if (!currentQuestion || !currentQuestion.options || currentQuestion.options.length < 4) return
+    if (hintsLeft <= 0 || removedIndices.length > 0) return
+
+    const correct = currentQuestion.correctIndex ?? -1
+    const wrongs = currentQuestion.options
+      .map((_, i) => i)
+      .filter((i) => i !== correct)
+
+    // Pick 2 at random
+    const toRemove = shuffle(wrongs).slice(0, 2)
+    setRemovedIndices(toRemove)
+    setHintsLeft((prev) => prev - 1)
+  }
+
+  const handleSkip = () => {
+    if (skipsLeft <= 0) return
+    setSkipsLeft((prev) => prev - 1)
+    handleNext()
   }
 
   const handleNext = () => {
@@ -630,75 +728,158 @@ function App() {
     <div className="app">
       <div className="map" ref={mapContainerRef} />
       <div className="scoreboard">
-        <div className="score-item">Score {correctAnswered}/{totalAnswered}</div>
+        <div className="score-item" style={{ fontWeight: 800, color: '#fff' }}>
+          {formatScore(score)} <span style={{ opacity: 0.5, fontSize: '0.7em' }}>PTS</span>
+        </div>
         <div className="score-divider">•</div>
-        <div className="score-item">Streak {currentStreak}</div>
+        <div className="score-item" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTime(sessionSeconds)}</span>
+        </div>
         <div className="score-divider">•</div>
-        <div className="score-item">Best {bestStreak}</div>
+        <div className="score-item" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <svg
+              key={i}
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill={i < hearts ? "#ff4d4d" : "rgba(255,255,255,0.1)"}
+              stroke={i < hearts ? "none" : "rgba(255,255,255,0.2)"}
+              strokeWidth="2.5"
+            >
+              <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+            </svg>
+          ))}
+        </div>
       </div>
       {!isOnline && (
         <div className="offline-banner">
           Offline mode: map tiles unavailable, quiz continues.
         </div>
       )}
-      <section className={`quiz-panel ${isMapTap ? 'compact' : ''}`} aria-live="polite">
-        {isMapTap ? (
-          <div className="compact-prompt">
-            {currentQuestion ? `Tap on the country: ${currentQuestion.prompt}` : 'Loading question...'}
-          </div>
-        ) : (
-          <div className="quiz-prompt">
-            {currentQuestion ? currentQuestion.prompt : 'Preparing datasets...'}
-          </div>
-        )}
 
-        {currentQuestion?.type === 'flag_match' && flagSrc && (
-          <div className="flag-preview">
-            <img src={flagSrc} alt="Country flag" onError={handleFlagError} />
-          </div>
-        )}
+      {!gameOver && (
+        <section className={`quiz-panel ${isMapTap ? 'compact' : ''}`} aria-live="polite">
+          {isMapTap ? (
+            <div className="compact-prompt">
+              <div className="compact-prompt-header">
+                {currentQuestion?.flagSvg || currentQuestion?.flagPng ? (
+                  <img
+                    src={resolvePublicAsset(currentQuestion.flagSvg || currentQuestion.flagPng || undefined)}
+                    className="compact-flag"
+                    alt=""
+                  />
+                ) : null}
+                <span className="compact-continent">{currentQuestion?.continent}</span>
+              </div>
+              <div className="compact-country-name">
+                {currentQuestion ? currentQuestion.prompt : 'Loading...'}
+              </div>
+            </div>
+          ) : (
+            <div className="quiz-prompt">
+              {currentQuestion ? currentQuestion.prompt : 'Preparing datasets...'}
+            </div>
+          )}
 
-        {currentQuestion?.options && (
-          <div className="options">
-            {currentQuestion.options.map((option, index) => (
+          {currentQuestion?.type === 'flag_match' && flagSrc && (
+            <div className="flag-preview">
+              <img src={flagSrc} alt="Country flag" onError={handleFlagError} />
+            </div>
+          )}
+
+          <div className="powerups">
+            {currentQuestion?.options && currentQuestion.options.length >= 4 && (
               <button
-                className={buildOptionClassName(
-                  index,
-                  selectedIndex,
-                  currentQuestion.correctIndex ?? null,
-                )}
-                key={option}
-                onClick={() => handleOptionSelect(index)}
+                className="powerup-btn"
+                onClick={handleHint}
+                disabled={hintsLeft <= 0 || removedIndices.length > 0}
+                title={`Spend Hint Charge (${hintsLeft} left). Removes 2 wrong answers`}
               >
-                {option}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" strokeDasharray="31.4" strokeDashoffset="15.7" />
+                  <path d="M12 2v20M2 12h20" opacity="0.2" />
+                </svg>
+                <span>50/50</span>
+                <span className="powerup-badge">{hintsLeft}</span>
               </button>
-            ))}
+            )}
+            <button
+              className="powerup-btn"
+              onClick={handleSkip}
+              disabled={skipsLeft <= 0}
+              title={`Spend Skip Charge (${skipsLeft} left). Preserves streak`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m6 17 5-5-5-5M13 17l5-5-5-5" />
+              </svg>
+              <span>Skip</span>
+              <span className="powerup-badge">{skipsLeft}</span>
+            </button>
           </div>
-        )}
 
-        {!isMapTap && currentQuestion?.type === 'map_tap' && (
-          <div className="map-instruction">
-            Tap to answer.
-          </div>
-        )}
+          {currentQuestion?.options && (
+            <div className="options">
+              {currentQuestion.options.map((option, index) => (
+                <button
+                  className={buildOptionClassName(
+                    index,
+                    selectedIndex,
+                    currentQuestion.correctIndex ?? null,
+                  )}
+                  key={option}
+                  onClick={() => handleOptionSelect(index)}
+                  style={{ visibility: removedIndices.includes(index) ? 'hidden' : 'visible' }}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
 
-        {feedback.status && feedback.message && (
-          <div className={`feedback ${feedback.status}`}>
-            {feedback.message}
-          </div>
-        )}
+          {!isMapTap && currentQuestion?.type === 'map_tap' && (
+            <div className="map-instruction">
+              Tap to answer.
+            </div>
+          )}
 
-        <div className="panel-footer" />
-      </section>
-      {answerModal.isOpen && (
-        <div className="answer-modal">
-          <div className="answer-modal-card">
-            <div className="answer-modal-title">{answerModal.title}</div>
-            <div className="answer-modal-body">{answerModal.body}</div>
-          </div>
+          {feedback.status && feedback.message && (
+            <div className={`feedback ${feedback.status}`}>
+              {feedback.message}
+            </div>
+          )}
+
+          <div className="panel-footer" />
+        </section>
+      )}
+
+      {messageOverlay.isOpen && (
+        <div className={`incorrect-overlay ${messageOverlay.type}`}>
+          <div className="incorrect-overlay-text">{messageOverlay.message}</div>
         </div>
       )}
-    </div>
+
+      {gameOver && (
+        <div className="answer-modal">
+          <div className="answer-modal-card" style={{ textAlign: 'center' }}>
+            <div className="answer-modal-title" style={{ fontSize: '1.5rem', color: '#ff4d4d' }}>Game Over</div>
+            <div className="answer-modal-body" style={{ marginBottom: '20px' }}>
+              You ran out of lives!<br />
+              Final Score: <strong>{formatScore(score)}</strong>
+            </div>
+            <button className="option correct" onClick={restartGame} style={{ width: '100%', justifyContent: 'center' }}>
+              Try Again
+            </button>
+          </div>
+        </div>
+      )
+      }
+
+    </div >
   )
 }
 
@@ -801,10 +982,10 @@ function buildQuestionForType(
       languagePool: CountryMeta[]
       populationPool: CountryMeta[]
       areaPool: CountryMeta[]
-    landlockedPool: CountryMeta[]
-    peakPool: CountryMeta[]
-    rangePool: CountryMeta[]
-    regionPool: CountryMeta[]
+      landlockedPool: CountryMeta[]
+      peakPool: CountryMeta[]
+      rangePool: CountryMeta[]
+      regionPool: CountryMeta[]
     }
     featureIndex: Map<string, FeatureRecord>
     queueRef: MutableRefObject<Record<QuestionType, string[]>>
@@ -819,6 +1000,9 @@ function buildQuestionForType(
       id: `${type}-${country.cca3}`,
       type,
       prompt: country.name,
+      continent: country.region,
+      flagSvg: country.flagSvg,
+      flagPng: country.flagPng,
       targetFeature,
       targetCca3: country.cca3,
       displayCca3s: [country.cca3],
@@ -1183,65 +1367,49 @@ function shuffle<T>(items: T[]) {
   const next = [...items]
   for (let i = next.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1))
-    ;[next[i], next[j]] = [next[j], next[i]]
+      ;[next[i], next[j]] = [next[j], next[i]]
   }
   return next
 }
 
-function formatNumber(value: number) {
-  if (!Number.isFinite(value)) return null
-  return new Intl.NumberFormat('en-US').format(value)
+
+function formatTime(totalSeconds: number) {
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-function buildAnswerDetails(country: CountryMeta) {
-  const lines: string[] = []
-  const regionLine = [country.region, country.subregion].filter(Boolean).join(' / ')
-  if (regionLine) lines.push(`Region: ${regionLine}`)
-  if (country.capital?.[0]) lines.push(`Capital: ${country.capital[0]}`)
-  if (country.population) {
-    const formatted = formatNumber(country.population)
-    if (formatted) lines.push(`Population: ${formatted}`)
-  }
-  if (country.area) {
-    const formatted = formatNumber(country.area)
-    if (formatted) lines.push(`Area: ${formatted} km2`)
-  }
-  if (country.currencies?.length) {
-    const codes = country.currencies
-      .map((currency) => currency.code)
-      .filter(Boolean)
-      .slice(0, 2)
-    if (codes.length) lines.push(`Currency: ${codes.join(', ')}`)
-  }
-  if (country.languages?.length) {
-    const langs = country.languages.slice(0, 3)
-    lines.push(`Languages: ${langs.join(', ')}`)
-  }
-  lines.push(`Coast: ${country.landlocked ? 'Landlocked' : 'Coastal'}`)
-  if (country.highestPeak?.name) {
-    const elevation = country.highestPeak.elevation
-    const formatted = formatNumber(elevation)
-    lines.push(
-      `Highest peak: ${country.highestPeak.name}${formatted ? ` (${formatted} m)` : ''}`,
-    )
-  }
-  if (country.mountainRanges?.length) {
-    lines.push(`Mountain range: ${country.mountainRanges[0]}`)
-  }
-  if (country.physicalRegions?.length) {
-    lines.push(`Region feature: ${country.physicalRegions[0]}`)
-  }
-  if (country.rivers?.length) {
-    lines.push(`River: ${country.rivers[0]}`)
-  }
-  if (country.cities?.length) {
-    lines.push(`City: ${country.cities[0]}`)
-  }
-  return lines
+function formatScore(n: number) {
+  return n.toLocaleString('en-US')
 }
 
-function resolvePublicAsset(path: string | null | undefined) {
-  if (!path) return null
+function getPointsForQuestion(type: QuestionType): number {
+  switch (type) {
+    case 'map_tap':
+      return 1000
+    case 'river_mcq':
+      return 800
+    case 'neighbor_mcq':
+    case 'peak_mcq':
+    case 'range_mcq':
+      return 600
+    case 'capital_mcq':
+    case 'currency_mcq':
+    case 'language_mcq':
+    case 'city_mcq':
+      return 500
+    case 'flag_match':
+    case 'population_pair':
+    case 'area_pair':
+    case 'landlocked_mcq':
+    case 'region_mcq':
+    default:
+      return 400
+  }
+}
+
+function resolvePublicAsset(path: string | null | undefined): string | undefined {
+  if (!path) return undefined
   if (!path.startsWith('/')) return path
   const baseUrl = import.meta.env.BASE_URL || '/'
   return `${baseUrl}${path.slice(1)}`

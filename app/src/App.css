@@ -27,48 +27,56 @@
 
 .scoreboard {
   position: absolute;
-  top: 16px;
+  top: 20px;
   left: 20px;
   right: 20px;
-  max-width: 520px;
-  margin: 0 auto;
-  transform: none;
-  z-index: 3;
+  background: rgba(15, 20, 30, 0.15);
+  backdrop-filter: blur(20px);
+  padding: 14px 24px;
+  border-radius: 16px;
   display: flex;
+  justify-content: center;
   align-items: center;
-  justify-content: space-between;
-  background: rgba(0, 0, 0, 0.6);
-  color: #ffffff;
-  padding: 8px 14px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  letter-spacing: 0.02em;
-  backdrop-filter: blur(10px);
+  gap: 16px;
+  z-index: 10;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.25);
 }
 
 .score-item {
+  color: #fff;
+  font-size: 1rem;
   font-weight: 600;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .score-divider {
-  display: none;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 1rem;
+  display: block;
 }
 
 .quiz-panel {
   position: absolute;
-  bottom: 20px;
-  left: 20px;
-  right: 20px;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92%;
   max-width: 520px;
-  z-index: 2;
-  background: rgba(0, 0, 0, 0.6);
-  color: #ffffff;
-  border-radius: 18px;
-  padding: 18px 18px 16px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 20, 30, 0.2);
+  backdrop-filter: blur(32px) saturate(180%);
+  padding: 24px;
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  z-index: 5;
 }
 
 .quiz-panel.compact {
@@ -202,12 +210,14 @@
 
 .answer-modal-card {
   width: min(520px, 100%);
-  background: rgba(0, 0, 0, 0.72);
+  background: rgba(15, 20, 30, 0.25);
+  backdrop-filter: blur(40px);
   color: #ffffff;
-  border-radius: 18px;
-  padding: 18px 20px;
+  border-radius: 24px;
+  padding: 32px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  position: relative;
 }
 
 .answer-modal-title {
@@ -230,8 +240,133 @@
   }
 }
 
+.compact-prompt-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.compact-flag {
+  width: 60px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.compact-continent {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #4cc4ff;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.9;
+}
+
+.compact-country-name {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
 @media (max-width: 520px) {
   .options {
     grid-template-columns: 1fr;
+  }
+}
+
+.powerups {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.powerup-btn {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 6px 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.powerup-badge {
+  background: rgba(76, 196, 255, 0.2);
+  color: #4cc4ff;
+  font-size: 0.6rem;
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-weight: 900;
+}
+
+.powerup-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.powerup-btn:disabled {
+  opacity: 0.2;
+}
+
+.incorrect-overlay {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  text-align: center;
+  pointer-events: none;
+  width: 100%;
+  animation: overlayFadeIn 0.3s ease-out;
+}
+
+
+
+.incorrect-overlay-text {
+  font-size: clamp(2rem, 10vw, 4.5rem);
+  font-weight: 900;
+  text-transform: uppercase;
+  padding: 0 40px;
+  white-space: pre-line;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.incorrect-overlay.incorrect .incorrect-overlay-text {
+  color: #ff4d4d;
+  text-shadow: 0 0 40px rgba(255, 77, 77, 0.4), 0 10px 40px rgba(0, 0, 0, 0.9);
+}
+
+.incorrect-overlay.correct .incorrect-overlay-text {
+  color: #ffffff;
+  text-shadow: 0 0 40px rgba(46, 204, 113, 0.4), 0 10px 40px rgba(0, 0, 0, 0.9);
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -45%);
+    scale: 0.9;
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+    scale: 1;
   }
 }

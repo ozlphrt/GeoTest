@@ -239,36 +239,19 @@ function App() {
   const restartGame = () => {
     setHearts(3)
     setGameOver(false)
-    setScore(0)
+    // Progress (score, level, correctInLevel) is now preserved for a "persistent" experience
     setCurrentStreak(0)
     setHintsLeft(3)
     setSkipsLeft(3)
-    setLevel(1)
-    setCorrectInLevel(0)
     setMessageOverlay({ isOpen: false, message: '', type: 'incorrect' })
-    // Reset queue?
-    queueRef.current = {
-      map_tap: [],
-      flag_match: [],
-      capital_mcq: [],
-      neighbor_mcq: [],
-      currency_mcq: [],
-      city_mcq: [],
-      river_mcq: [],
-      language_mcq: [],
-      population_pair: [],
-      area_pair: [],
-      landlocked_mcq: [],
-      peak_mcq: [],
-      range_mcq: [],
-      region_mcq: [],
-    }
+
+    // Refresh question if it was stuck
     const question = buildNextQuestion({
       pools: countryPools,
       featureIndex,
       queueRef,
       typeIndexRef,
-      level: 1,
+      level,
     })
     setCurrentQuestion(question)
   }
@@ -281,7 +264,13 @@ function App() {
         if (typeof data.highScore === 'number') setHighScore(data.highScore)
         if (typeof data.score === 'number') setScore(data.score)
         if (typeof data.level === 'number') setLevel(data.level)
-        if (typeof data.hearts === 'number') setHearts(data.hearts)
+
+        // If they left with 0 hearts, keep them at Game Over
+        if (typeof data.hearts === 'number') {
+          setHearts(data.hearts)
+          if (data.hearts <= 0) setGameOver(true)
+        }
+
         if (typeof data.correctInLevel === 'number') setCorrectInLevel(data.correctInLevel)
         if (typeof data.streak === 'number') setCurrentStreak(data.streak)
         if (data.theme === 'light' || data.theme === 'dark') setTheme(data.theme)

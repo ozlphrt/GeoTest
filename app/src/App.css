@@ -17,21 +17,21 @@
 }
 
 body.light-mode {
-  --bg-app: #f0f4f8;
-  --bg-panel: rgba(255, 255, 255, 0.4);
-  --bg-scoreboard: rgba(255, 255, 255, 0.3);
-  --bg-modal: rgba(255, 255, 255, 0.2);
-  --bg-modal-card: rgba(255, 255, 255, 0.5);
-  --text-main: #1a1f26;
-  --text-dim: rgba(26, 31, 38, 0.72);
-  --text-dimmer: rgba(26, 31, 38, 0.3);
-  --border-glass: rgba(0, 0, 0, 0.1);
-  --border-scoreboard: rgba(0, 0, 0, 0.08);
-  --accent-blue: #0077cc;
-  --success-green: #27ae60;
-  --error-red: #c0392b;
-  --shadow-main: rgba(0, 0, 0, 0.1);
-  --backdrop-blur: 20px;
+  --bg-app: linear-gradient(135deg, #e8f0f7 0%, #f5f8fa 100%);
+  --bg-panel: rgba(255, 255, 255, 0.75);
+  --bg-scoreboard: rgba(255, 255, 255, 0.65);
+  --bg-modal: rgba(240, 244, 248, 0.4);
+  --bg-modal-card: rgba(255, 255, 255, 0.85);
+  --text-main: #1a2332;
+  --text-dim: rgba(26, 35, 50, 0.8);
+  --text-dimmer: rgba(26, 35, 50, 0.45);
+  --border-glass: rgba(26, 35, 50, 0.15);
+  --border-scoreboard: rgba(26, 35, 50, 0.12);
+  --accent-blue: #0066cc;
+  --success-green: #22a85f;
+  --error-red: #d63031;
+  --shadow-main: rgba(26, 35, 50, 0.15);
+  --backdrop-blur: 24px;
 }
 
 .app {
@@ -41,6 +41,7 @@ body.light-mode {
   height: 100dvh;
   overflow: hidden;
   background: var(--bg-app);
+  background-image: var(--bg-app);
   transition: background 0.3s ease;
 }
 
@@ -673,6 +674,7 @@ body.light-mode .option.incorrect {
   color: var(--text-main);
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

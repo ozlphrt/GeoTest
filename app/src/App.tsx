@@ -969,42 +969,50 @@ function App() {
       {isDataLoaded && (
         <>
           <div className="scoreboard">
-            <div className={`score-item ${displayScore !== score ? 'animate-score-bump' : ''}`} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0' }}>
-              <div style={{ fontWeight: 800, color: '#fff', fontSize: '1rem' }}>
-                {formatScore(displayScore)} <span style={{ opacity: 0.5, fontSize: '0.7em' }}>PTS</span>
-              </div>
-              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700 }}>
-                BEST: {formatScore(highScore)}
+            <div className={`stat-group ${displayScore !== score ? 'animate-score-bump' : ''}`}>
+              <div className="stat-label">Score</div>
+              <div className="stat-value">{formatScore(displayScore)}</div>
+              <div className="stat-sub">BEST: {formatScore(highScore)}</div>
+            </div>
+
+            <div className="divider" />
+
+            <div className="stat-group">
+              <div className="stat-label">Time</div>
+              <div className="stat-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                {formatTime(sessionSeconds)}
               </div>
             </div>
-            <div className="score-divider">•</div>
-            <div className="score-item" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTime(sessionSeconds)}</span>
-            </div>
-            <div className="score-divider">•</div>
-            <div className="score-item" style={{ flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
-              <div className={isLevelUp ? 'animate-pulse' : ''} style={{ letterSpacing: '0.05em', color: '#4cc4ff', fontWeight: 800, fontSize: '0.85rem' }}>
-                LVL {level}
+
+            <div className="divider" />
+
+            <div className="stat-group">
+              <div className="stat-label">Progress</div>
+              <div className={`stat-value accent ${isLevelUp ? 'animate-pulse' : ''}`}>
+                L.{level}
               </div>
-              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700 }}>
-                {correctInLevel}/5 NEXT
-              </div>
+              <div className="stat-sub">{correctInLevel}/5 NEXT</div>
             </div>
-            <div className="score-divider">•</div>
-            <div className="score-item" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+
+            <div className="divider" />
+
+            <div className="hearts-container">
               {Array.from({ length: 3 }).map((_, i) => (
                 <svg
                   key={i}
-                  width="16"
-                  height="16"
+                  width="14"
+                  height="14"
                   viewBox="0 0 24 24"
-                  fill={i < hearts ? "#ff4d4d" : "rgba(255,255,255,0.1)"}
-                  stroke={i < hearts ? "none" : "rgba(255,255,255,0.2)"}
-                  strokeWidth="2.5"
+                  className={i < hearts ? "pulse-heart" : ""}
+                  fill={i < hearts ? "#ff4d4d" : "rgba(255,255,255,0.05)"}
+                  style={{
+                    opacity: i < hearts ? 1 : 0.3,
+                    transition: 'all 0.3s ease'
+                  }}
                 >
                   <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
                 </svg>

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoTest Scoreboard Design Concepts</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=JetBrains+Mono:wght@700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0e1116;
+            --bg-light: #f8fafc;
+            --accent-blue: #3b82f6;
+            --success-green: #22c55e;
+            --error-red: #ef4444;
+            --gold: #fbbf24;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px;
+            font-family: 'Outfit', sans-serif;
+            background: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            gap: 60px;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .label {
+            font-weight: 800;
+            font-size: 1.2rem;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        /* CONCEPT 1: FLOATING NEO-GLASS */
+        .glass-pill {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            padding: 10px 24px;
+            border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 0 rgba(255, 255, 255, 1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            width: fit-content;
+            align-self: center;
+        }
+
+        .stat-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #0f172a;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .divider {
+            width: 1px;
+            height: 30px;
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .hearts-col {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .heart {
+            color: var(--error-red);
+            font-size: 1rem;
+            filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.2));
+            animation: pulse-heart 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-heart {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        /* CONCEPT 2: THE MODULAR DOCK */
+        .modular-dock {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .chip {
+            background: #ffffff;
+            padding: 8px 16px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .chip.blue {
+            border-left: 4px solid var(--accent-blue);
+        }
+
+        .chip.green {
+            border-left: 4px solid var(--success-green);
+        }
+
+        .chip.red {
+            border-left: 4px solid var(--error-red);
+        }
+
+        .chip-icon {
+            font-size: 1.2rem;
+            opacity: 0.7;
+        }
+
+        .chip-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chip-val {
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: #1e293b;
+        }
+
+        .chip-sub {
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #94a3b8;
+        }
+
+        /* CONCEPT 3: CYBERPUNK HUD (DARK) */
+        .cyber-hud {
+            background: #0f172a;
+            border: 2px solid #38bdf8;
+            padding: 12px 20px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            position: relative;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+            width: fit-content;
+            align-self: center;
+        }
+
+        .cyber-hud::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            width: 20px;
+            height: 2px;
+            background: #fff;
+        }
+
+        .cyber-value {
+            font-family: 'JetBrains Mono', monospace;
+            color: #38bdf8;
+            font-size: 2rem;
+            text-shadow: 0 0 10px #38bdf8;
+        }
+
+        .cyber-label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* CONCEPT 4: MINIMALIST TOP BAR */
+        .minimal-bar {
+            width: 100%;
+            background: #ffffff;
+            border-bottom: 2px solid #000;
+            padding: 12px 0;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        .min-item {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+
+        .min-val {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: #000;
+            letter-spacing: -0.05em;
+        }
+
+        .min-unit {
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: #000;
+            opacity: 0.4;
+        }
+
+        /* CONCEPT 5: THE RADIAL HUD */
+        .radial-hud {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+            justify-content: center;
+        }
+
+        .radial-stat {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .svg-ring {
+            position: absolute;
+            transform: rotate(-90deg);
+        }
+
+        .ring-bg {
+            fill: none;
+            stroke: #e2e8f0;
+            stroke-width: 6;
+        }
+
+        .ring-fg {
+            fill: none;
+            stroke: var(--accent-blue);
+            stroke-width: 6;
+            stroke-dasharray: 200;
+            stroke-dashoffset: 50;
+            stroke-linecap: round;
+        }
+
+        .radial-val {
+            font-weight: 800;
+            font-size: 1.2rem;
+            color: #1e293b;
+            z-index: 1;
+        }
+
+        .radial-label {
+            font-size: 0.6rem;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            z-index: 1;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="label">1. Floating Neo-Glass (Premium & Airy)</div>
+        <div class="glass-pill">
+            <div class="stat-group">
+                <div class="stat-label">Score</div>
+                <div class="stat-value">2,450</div>
+            </div>
+            <div class="divider"></div>
+            <div class="stat-group">
+                <div class="stat-label">Timer</div>
+                <div class="stat-value">0:45</div>
+            </div>
+            <div class="divider"></div>
+            <div class="stat-group" style="align-items: center;">
+                <div class="stat-label" style="color: var(--accent-blue);">Level</div>
+                <div class="stat-value" style="color: var(--accent-blue);">8</div>
+            </div>
+            <div class="divider"></div>
+            <div class="hearts-col">
+                <span class="heart">❤️</span>
+                <span class="heart">❤️</span>
+                <span class="heart" style="opacity: 0.2; filter: grayscale(1);">❤️</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="label">2. Modular Dock (Clean & Component-based)</div>
+        <div class="modular-dock">
+            <div class="chip blue">
+                <span class="chip-icon">🏆</span>
+                <div class="chip-text">
+                    <span class="chip-val">12,800</span>
+                    <span class="chip-sub">BEST: 18K</span>
+                </div>
+            </div>
+            <div class="chip">
+                <span class="chip-icon">⏱️</span>
+                <div class="chip-text">
+                    <span class="chip-val">04:12</span>
+                    <span class="chip-sub">TIME LEFT</span>
+                </div>
+            </div>
+            <div class="chip green">
+                <span class="chip-icon">🎖️</span>
+                <div class="chip-text">
+                    <span class="chip-val">LVL 14</span>
+                    <span class="chip-sub">ELITE EXPLORER</span>
+                </div>
+            </div>
+            <div class="chip red">
+                <div class="hearts-col" style="flex-direction: row; gap: 4px;">
+                    <span class="heart">❤️</span>
+                    <span class="heart">❤️</span>
+                    <span class="heart">❤️</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="label">3. Cyber HUD (High Contrast & Tech)</div>
+        <div class="cyber-hud">
+            <div>
+                <div class="cyber-label">SEC_SCORE</div>
+                <div class="cyber-value">004250</div>
+            </div>
+            <div>
+                <div class="cyber-label">TRMT_00</div>
+                <div class="cyber-value" style="color: #fbbf24; text-shadow: 0 0 10px rgba(251, 191, 36, 0.5);">02:59
+                </div>
+            </div>
+            <div>
+                <div class="cyber-label">LIVES_REM</div>
+                <div style="display: flex; gap: 5px; margin-top: 5px;">
+                    <div
+                        style="width: 10px; height: 15px; background: var(--error-red); box-shadow: 0 0 8px var(--error-red);">
+                    </div>
+                    <div
+                        style="width: 10px; height: 15px; background: var(--error-red); box-shadow: 0 0 8px var(--error-red);">
+                    </div>
+                    <div style="width: 10px; height: 15px; background: rgba(255,255,255,0.1);"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="label">4. Minimalist Impact (Editorial Style)</div>
+        <div class="minimal-bar">
+            <div class="min-item">
+                <span class="min-val">0</span>
+                <span class="min-unit">PTS</span>
+            </div>
+            <div class="min-item">
+                <span class="min-val">00</span>
+                <span class="min-unit">SEC</span>
+            </div>
+            <div class="min-item">
+                <span class="min-val">L.01</span>
+            </div>
+            <div class="hearts-col" style="gap: 2px;">
+                <div style="width: 4px; height: 14px; background: red;"></div>
+                <div style="width: 4px; height: 14px; background: red;"></div>
+                <div style="width: 4px; height: 14px; background: #eee;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="label">5. Orbital Visualizers (Geometric & Modern)</div>
+        <div class="radial-hud">
+            <div class="radial-stat">
+                <svg class="svg-ring" width="80" height="80">
+                    <circle class="ring-bg" cx="40" cy="40" r="32"></circle>
+                    <circle class="ring-fg" cx="40" cy="40" r="32" style="stroke: #fbbf24; stroke-dashoffset: 120;">
+                    </circle>
+                </svg>
+                <span class="radial-val">2.5k</span>
+                <span class="radial-label">Gold</span>
+            </div>
+            <div class="radial-stat">
+                <svg class="svg-ring" width="80" height="80">
+                    <circle class="ring-bg" cx="40" cy="40" r="32"></circle>
+                    <circle class="ring-fg" cx="40" cy="40" r="32"></circle>
+                </svg>
+                <span class="radial-val">45s</span>
+                <span class="radial-label">Left</span>
+            </div>
+            <div class="radial-stat">
+                <div class="radial-val" style="font-size: 2.5rem; color: var(--accent-blue);">8</div>
+                <div class="radial-label">Level</div>
+            </div>
+            <div class="hearts-col">
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: var(--error-red);"></div>
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: var(--error-red);"></div>
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: #e2e8f0;"></div>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

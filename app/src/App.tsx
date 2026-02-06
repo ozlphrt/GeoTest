@@ -1536,29 +1536,29 @@ function buildNextQuestion(args: {
   // Filter types by level
   const levelTypes: QuestionType[] = []
 
-  // Level 1+: Basic identifiers
+  // Level 1+: Intro
   levelTypes.push('flag_match', 'capital_mcq')
 
-  // Level 3+: Geography & Positioning
-  if (args.level >= 3) levelTypes.push('map_tap', 'neighbor_mcq', 'population_pair', 'area_pair')
+  // Level 4+: Geography & Positioning
+  if (args.level >= 4) levelTypes.push('map_tap', 'neighbor_mcq', 'population_pair', 'area_pair')
 
-  // Level 5+: Detail & Characteristics
-  if (args.level >= 5) {
+  // Level 8+: Detail & Characteristics
+  if (args.level >= 8) {
     levelTypes.push('city_mcq', 'currency_mcq', 'landlocked_mcq', 'region_mcq', 'population_tier')
   }
 
-  // Level 7+: Cultural & Hydrography
-  if (args.level >= 7) {
+  // Level 12+: Cultural & Hydrography
+  if (args.level >= 12) {
     levelTypes.push('river_mcq', 'language_mcq', 'population_more_than')
   }
 
-  // Level 11+: High Logic & Complexity
-  if (args.level >= 11) {
+  // Level 16+: High Logic & Complexity
+  if (args.level >= 16) {
     levelTypes.push('subregion_outlier', 'neighbor_count_mcq', 'population_rank')
   }
 
-  // Level 13+: Visual Mastery
-  if (args.level >= 13) levelTypes.push('silhouette_mcq', 'coastline_mcq', 'landmark_photo_mcq')
+  // Level 20+: Visual Mastery
+  if (args.level >= 20) levelTypes.push('silhouette_mcq', 'coastline_mcq', 'landmark_photo_mcq')
 
   // Level 15+: Trivia & Knowledge
   if (args.level >= 15) {
@@ -2240,15 +2240,34 @@ function getNextCountryForType(
 }
 
 function getPoolForLevel<T>(pool: T[], level: number): T[] {
-  if (level === 1) return pool.slice(0, 20)
-  if (level === 2) return pool.slice(0, 40)
-  if (level === 3) return pool.slice(0, 60)
-  if (level === 4) return pool.slice(0, 80)
-  if (level === 5) return pool.slice(0, 100)
-  if (level === 6) return pool.slice(0, 130)
-  if (level === 7) return pool.slice(0, 160)
-  if (level === 8) return pool.slice(0, 200)
-  return pool
+  let start = 0
+  let end = pool.length
+
+  if (level <= 3) {
+    // Intro: Tight set of superstars
+    start = 0
+    end = 20
+  } else if (level <= 7) {
+    // Early: Phasing in region leaders
+    start = 10
+    end = 55
+  } else if (level <= 15) {
+    // Mid: Canada/USA/China are gone. Testing middle-weights.
+    start = 40
+    end = 130
+  } else if (level <= 30) {
+    // Expert: Deep cuts, islands, small states.
+    start = 100
+    end = 210
+  } else {
+    // Master: True random from the whole world.
+    start = 0
+    end = pool.length
+  }
+
+  const s = Math.max(0, Math.min(start, pool.length - 10))
+  const e = Math.max(s + 10, Math.min(end, pool.length))
+  return pool.slice(s, e)
 }
 
 function buildOptionSet(
@@ -2261,12 +2280,28 @@ function buildOptionSet(
   const correctValue = preferredValue ?? valueSelector(correct)
   options.add(correctValue)
 
-  const shuffled = shuffle(pool)
+  const sameContinent = pool.filter((c) => c.region === correct.region)
+
+  // Favor same-continent distractors if the pool is large enough
+  const primaryPool = sameContinent.length >= 4 ? sameContinent : pool
+  const shuffled = shuffle(primaryPool)
+
   for (const country of shuffled) {
     const value = valueSelector(country)
     if (!value || value === correctValue) continue
     options.add(value)
     if (options.size >= 4) break
+  }
+
+  // Fallback if not enough distractors on the same continent
+  if (options.size < 4) {
+    const fallbackShuffled = shuffle(pool)
+    for (const country of fallbackShuffled) {
+      const value = valueSelector(country)
+      if (!value || value === correctValue) continue
+      options.add(value)
+      if (options.size >= 4) break
+    }
   }
 
   const finalOptions = shuffle(Array.from(options))
@@ -2294,12 +2329,29 @@ function buildOptionSetForCountries(pool: CountryMeta[], correct: CountryMeta) {
   const correctValue = correct.name
   options.add(correctValue)
 
-  const shuffled = shuffle(pool)
+  const sameContinent = pool.filter((c) => c.region === correct.region && c.name !== correctValue)
+  const sameSubregion = pool.filter((c) => c.subregion === correct.subregion && c.name !== correctValue)
+
+  // Use subregion distractors at high levels to make it harder
+  const distractorPool = pool.length > 50 && sameSubregion.length >= 3 ? sameSubregion : sameContinent.length >= 3 ? sameContinent : pool
+
+  const shuffled = shuffle(distractorPool)
   for (const country of shuffled) {
     const value = country.name
     if (!value || value === correctValue) continue
     options.add(value)
     if (options.size >= 4) break
+  }
+
+  // If still not enough options, fallback to full pool
+  if (options.size < 4) {
+    const fallbackShuffled = shuffle(pool)
+    for (const country of fallbackShuffled) {
+      const value = country.name
+      if (!value || value === correctValue) continue
+      options.add(value)
+      if (options.size >= 4) break
+    }
   }
 
   const finalOptions = shuffle(Array.from(options))

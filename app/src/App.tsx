@@ -147,7 +147,6 @@ function App() {
   const [riverIndex, setRiverIndex] = useState<Map<string, RiverRecord>>(new Map())
   const [score, setScore] = useState(0)
   const [displayScore, setDisplayScore] = useState(0)
-  const [highScore, setHighScore] = useState(0)
   const [currentStreak, setCurrentStreak] = useState(0)
   const [hearts, setHearts] = useState(3)
   const [gameOver, setGameOver] = useState(false)
@@ -417,12 +416,44 @@ function App() {
     setCurrentQuestion(question)
   }
 
+  const fullResetGame = () => {
+    if (!window.confirm("Are you sure you want to reset all progress? This will wipe your score, level, mastery, and achievements forever.")) {
+      return
+    }
+
+    // Reset all progress states
+    setScore(0)
+    setDisplayScore(0)
+    setLevel(1)
+    setHearts(3)
+    setCorrectInLevel(0)
+    setCurrentStreak(0)
+    setMastery({})
+    setAchievements([])
+    setCompletedQuestions([])
+    setHintsLeft(3)
+    setSkipsLeft(3)
+    setSessionSeconds(0)
+    setLevelStartScore(0)
+    setGameOver(false)
+    setRemovedIndices([])
+    setNotification(null)
+    setGuidanceTip("Progress Reset Complete")
+    setTimeout(() => setGuidanceTip(null), 3000)
+
+    // Clear local storage
+    localStorage.removeItem('geotest-progress')
+
+    // Refresh UI
+    setIsSettingsOpen(false)
+    handleNext()
+  }
+
   useEffect(() => {
     const saved = localStorage.getItem('geotest-progress')
     if (saved) {
       try {
         const data = JSON.parse(saved)
-        if (typeof data.highScore === 'number') setHighScore(data.highScore)
         if (typeof data.score === 'number') setScore(data.score)
         if (typeof data.level === 'number') setLevel(data.level)
 
@@ -452,7 +483,6 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem('geotest-progress', JSON.stringify({
-      highScore,
       score,
       level,
       hearts,
@@ -465,7 +495,7 @@ function App() {
       completedQuestions
     }))
     document.body.classList.toggle('light-mode', theme === 'light')
-  }, [highScore, score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements, completedQuestions])
+  }, [score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements, completedQuestions])
 
   useEffect(() => {
     if (!notification) return
@@ -809,7 +839,6 @@ function App() {
 
         setScore((s) => {
           const next = s + points
-          if (next > highScore) setHighScore(next)
           return next
         })
 
@@ -1011,7 +1040,6 @@ function App() {
         setScorePopups(prev => [...prev, { id: popupId, x, y, value: `+${formatScore(points)}` }])
         setTimeout(() => setScorePopups(prev => prev.filter(p => p.id !== popupId)), 1000)
 
-        if (next > highScore) setHighScore(next)
 
         // Tiered Score Achievements
         if (next >= 1000000) triggerAchievement('legend', 'Geographic Legend (1M Pts)')
@@ -1243,6 +1271,21 @@ function App() {
               </svg>
               <span>Progress Atlas</span>
             </button>
+
+            <div className="settings-divider" style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '8px 0' }} />
+
+            <button
+              className="theme-toggle reset-btn"
+              onClick={fullResetGame}
+              title="Reset All Progress"
+              style={{ color: '#ff4d4d' }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+              <span>Reset Progress</span>
+            </button>
           </div>
         )}
       </div>
@@ -1268,10 +1311,6 @@ function App() {
                   <div className="combo-popover animate-bounce">{comboTip.message}</div>
                 )}
               </div>
-            </div>
-            <div className="stat">
-              <div className="stat-label">HIGH SCORE</div>
-              <div className="stat-value text-dim">{formatScore(highScore)}</div>
             </div>
 
             <div className="divider" />
@@ -1495,9 +1534,8 @@ function App() {
             </div>
           )}
         </>
-      )
-      }
-    </div >
+      )}
+    </div>
   )
 }
 

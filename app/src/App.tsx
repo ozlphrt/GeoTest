@@ -6,6 +6,10 @@ import './App.css'
 import countriesData from './data/countries_merged.json'
 import admin0GeoJsonUrl from './data/admin0_sovereignty.geojson?url'
 import riversGeoJsonUrl from './data/raw/ne_50m_rivers.geojson?url'
+import gdpData from './data/gdp_by_country.json'
+import exportsData from './data/exports_by_country.json'
+import unescoData from './data/unesco_sites.json'
+import landmarksData from './data/landmarks.json'
 
 type QuestionType =
   | 'map_tap'
@@ -22,6 +26,18 @@ type QuestionType =
   | 'peak_mcq'
   | 'range_mcq'
   | 'region_mcq'
+  | 'subregion_outlier'
+  | 'neighbor_count_mcq'
+  | 'population_rank'
+  | 'silhouette_mcq'
+  | 'coastline_mcq'
+  | 'flag_colors_mcq'
+  | 'unesco_mcq'
+  | 'landmark_photo_mcq'
+  | 'population_tier'
+  | 'population_more_than'
+  | 'gdp_tier'
+  | 'economy_exports_mcq'
 
 type CountryMeta = {
   cca2: string | null
@@ -45,6 +61,11 @@ type CountryMeta = {
   physicalRegions: string[]
   flagSvg: string | null
   flagPng: string | null
+  gdpUsd?: number | null
+  gdpYear?: number | null
+  gdpRank?: number | null
+  topExports?: { hs2: string | null; label: string; tradeValue: number }[]
+  unescoSites?: string[]
 }
 
 type GeoFeature = {
@@ -83,10 +104,23 @@ type Question = {
   optionCca3s?: (string | null | undefined)[]
   flagSvg?: string | null
   flagPng?: string | null
+  imagePath?: string | null
   targetFeature?: FeatureRecord
   targetCca3?: string
   displayCca3s?: string[]
   continent?: string
+  hideLabels?: boolean
+}
+
+type LandmarkEntry = {
+  id: string
+  title: string
+  country: string
+  cca3: string
+  imagePath: string
+  license: string
+  sourceUrl: string
+  credit: string
 }
 
 function App() {
@@ -108,6 +142,7 @@ function App() {
   }>({ isOpen: false, message: '', type: 'incorrect' })
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [isDataLoaded, setIsDataLoaded] = useState(false)
+  const [mapLoaded, setMapLoaded] = useState(false)
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
   const [featureIndex, setFeatureIndex] = useState<Map<string, FeatureRecord>>(new Map())
   const [riverIndex, setRiverIndex] = useState<Map<string, RiverRecord>>(new Map())
@@ -134,13 +169,56 @@ function App() {
 
   const countryPools = useMemo(() => {
     const countries = countriesData as CountryMeta[]
+    const gdpValues =
+      (gdpData as { values?: Record<string, { value: number; year: number }> }).values ?? {}
+    const exportValues =
+      (exportsData as {
+        values?: Record<string, { hs2: string | null; label: string; tradeValue: number }[]>
+      }).values ?? {}
+    const unescoSites =
+      (unescoData as { sites?: { name: string; cca3s: string[] }[] }).sites ?? []
+    const landmarks = landmarksData as LandmarkEntry[]
+
+    const unescoByCca3 = new Map<string, string[]>()
+    for (const site of unescoSites) {
+      if (!Array.isArray(site.cca3s)) continue
+      for (const cca3 of site.cca3s) {
+        if (!unescoByCca3.has(cca3)) unescoByCca3.set(cca3, [])
+        unescoByCca3.get(cca3)?.push(site.name)
+      }
+    }
+
+    const landmarkByCca3 = new Map<string, LandmarkEntry[]>()
+    for (const entry of landmarks) {
+      if (!entry.cca3) continue
+      if (!landmarkByCca3.has(entry.cca3)) {
+        landmarkByCca3.set(entry.cca3, [])
+      }
+      landmarkByCca3.get(entry.cca3)?.push(entry)
+    }
+
+    const enrichedCountries = countries.map((country) => {
+      const cca3 = country.cca3 ?? ''
+      const gdpEntry = gdpValues[cca3]
+      const topExports = exportValues[cca3] ?? country.topExports ?? []
+      const unescoList = unescoByCca3.get(cca3) ?? country.unescoSites ?? []
+      return {
+        ...country,
+        gdpUsd: gdpEntry?.value ?? country.gdpUsd ?? null,
+        gdpYear: gdpEntry?.year ?? country.gdpYear ?? null,
+        topExports,
+        unescoSites: unescoList,
+      }
+    })
+
     const countriesByCca3 = new Map<string, CountryMeta>()
-    for (const country of countries) {
+    for (const country of enrichedCountries) {
       if (country.cca3) {
         countriesByCca3.set(country.cca3, country)
       }
     }
-    const sorted = [...countries].sort((a, b) => {
+
+    const sorted = [...enrichedCountries].sort((a, b) => {
       const scoreA = (a.population || 0) + (a.area || 0) / 10
       const scoreB = (b.population || 0) + (b.area || 0) / 10
       return scoreB - scoreA
@@ -152,22 +230,61 @@ function App() {
         return scoreB - scoreA
       })
 
-    const mapPool = filterAndSort(countries.filter((country) => country.cca3 && featureIndex.has(country.cca3)))
-    const flagPool = filterAndSort(countries.filter((country) => country.cca2 && (country.flagSvg || country.flagPng)))
-    const capitalPool = filterAndSort(countries.filter((country) => country.capital?.length))
-    const neighborPool = filterAndSort(countries.filter(
-      (country) => country.borders?.length && country.borders.some((code) => countriesByCca3.has(code)),
-    ))
-    const currencyPool = filterAndSort(countries.filter((country) => country.currencies?.length))
-    const cityPool = filterAndSort(countries.filter((country) => country.cities?.length))
-    const riverPool = filterAndSort(countries.filter((country) => country.rivers?.length))
-    const languagePool = filterAndSort(countries.filter((country) => country.languages?.length))
-    const populationPool = filterAndSort(countries.filter((country) => (country.population ?? 0) > 0))
-    const areaPool = filterAndSort(countries.filter((country) => (country.area ?? 0) > 0))
-    const landlockedPool = filterAndSort(countries.filter((country) => typeof country.landlocked === 'boolean'))
-    const peakPool = filterAndSort(countries.filter((country) => country.highestPeak?.name))
-    const rangePool = filterAndSort(countries.filter((country) => country.mountainRanges?.length))
-    const regionPool = filterAndSort(countries.filter((country) => country.physicalRegions?.length))
+    const populationRankByCca3 = new Map<string, number>()
+    const populationSorted = [...enrichedCountries]
+      .filter((country) => (country.population ?? 0) > 0)
+      .sort((a, b) => (b.population ?? 0) - (a.population ?? 0))
+    populationSorted.forEach((country, idx) => {
+      if (country.cca3) populationRankByCca3.set(country.cca3, idx + 1)
+    })
+
+    const gdpRankByCca3 = new Map<string, number>()
+    const gdpSorted = [...enrichedCountries]
+      .filter((country) => (country.gdpUsd ?? 0) > 0)
+      .sort((a, b) => (b.gdpUsd ?? 0) - (a.gdpUsd ?? 0))
+    gdpSorted.forEach((country, idx) => {
+      if (country.cca3) gdpRankByCca3.set(country.cca3, idx + 1)
+    })
+
+    const mapPool = filterAndSort(
+      enrichedCountries.filter((country) => country.cca3 && featureIndex.has(country.cca3)),
+    )
+    const flagPool = filterAndSort(
+      enrichedCountries.filter((country) => country.cca2 && (country.flagSvg || country.flagPng)),
+    )
+    const capitalPool = filterAndSort(enrichedCountries.filter((country) => country.capital?.length))
+    const neighborPool = filterAndSort(
+      enrichedCountries.filter(
+        (country) =>
+          country.borders?.length && country.borders.some((code) => countriesByCca3.has(code)),
+      ),
+    )
+    const currencyPool = filterAndSort(enrichedCountries.filter((country) => country.currencies?.length))
+    const cityPool = filterAndSort(enrichedCountries.filter((country) => country.cities?.length))
+    const riverPool = filterAndSort(enrichedCountries.filter((country) => country.rivers?.length))
+    const languagePool = filterAndSort(enrichedCountries.filter((country) => country.languages?.length))
+    const populationPool = filterAndSort(
+      enrichedCountries.filter((country) => (country.population ?? 0) > 0),
+    )
+    const areaPool = filterAndSort(enrichedCountries.filter((country) => (country.area ?? 0) > 0))
+    const landlockedPool = filterAndSort(
+      enrichedCountries.filter((country) => typeof country.landlocked === 'boolean'),
+    )
+    const peakPool = filterAndSort(enrichedCountries.filter((country) => country.highestPeak?.name))
+    const rangePool = filterAndSort(enrichedCountries.filter((country) => country.mountainRanges?.length))
+    const regionPool = filterAndSort(
+      enrichedCountries.filter((country) => country.physicalRegions?.length),
+    )
+    const unescoPool = filterAndSort(
+      enrichedCountries.filter((country) => country.unescoSites?.length),
+    )
+    const exportsPool = filterAndSort(
+      enrichedCountries.filter((country) => country.topExports?.length),
+    )
+    const gdpPool = filterAndSort(enrichedCountries.filter((country) => (country.gdpUsd ?? 0) > 0))
+    const landmarkPool = filterAndSort(
+      enrichedCountries.filter((country) => country.cca3 && landmarkByCca3.has(country.cca3)),
+    )
     return {
       countries: sorted,
       countriesByCca3,
@@ -185,6 +302,13 @@ function App() {
       peakPool,
       rangePool,
       regionPool,
+      unescoPool,
+      exportsPool,
+      gdpPool,
+      landmarkPool,
+      landmarkByCca3,
+      populationRankByCca3,
+      gdpRankByCca3,
     }
   }, [countriesData, featureIndex])
 
@@ -234,6 +358,18 @@ function App() {
     peak_mcq: [],
     range_mcq: [],
     region_mcq: [],
+    subregion_outlier: [],
+    neighbor_count_mcq: [],
+    population_rank: [],
+    silhouette_mcq: [],
+    coastline_mcq: [],
+    flag_colors_mcq: [],
+    unesco_mcq: [],
+    landmark_photo_mcq: [],
+    population_tier: [],
+    population_more_than: [],
+    gdp_tier: [],
+    economy_exports_mcq: [],
   })
   const typeIndexRef = useRef(0)
 
@@ -245,6 +381,10 @@ function App() {
     setHintsLeft(3)
     setSkipsLeft(3)
     setMessageOverlay({ isOpen: false, message: '', type: 'incorrect' })
+    if (nextTimeoutRef.current) {
+      window.clearTimeout(nextTimeoutRef.current)
+      nextTimeoutRef.current = null
+    }
 
     // Refresh question if it was stuck
     const question = buildNextQuestion({
@@ -567,6 +707,7 @@ function App() {
           'line-width': 1,
         },
       })
+      setMapLoaded(true)
     })
 
     return () => {
@@ -584,7 +725,7 @@ function App() {
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !currentQuestion) return
+    if (!map || !mapLoaded || !currentQuestion) return
 
     const handleMapTap = (event: maplibregl.MapMouseEvent) => {
       if (currentQuestion.type !== 'map_tap' || !currentQuestion.targetFeature) return
@@ -669,13 +810,17 @@ function App() {
         }, 700)
       } else {
         setCorrectInLevel(0)
+        setCurrentStreak(0)
         if (nextTimeoutRef.current) {
           window.clearTimeout(nextTimeoutRef.current)
         }
-        nextTimeoutRef.current = window.setTimeout(() => {
-          handleNext()
-          nextTimeoutRef.current = null
-        }, 3000)
+        const isDead = hearts <= 1
+        if (!isDead) {
+          nextTimeoutRef.current = window.setTimeout(() => {
+            handleNext()
+            nextTimeoutRef.current = null
+          }, 3000)
+        }
       }
     }
 
@@ -688,14 +833,20 @@ function App() {
   useEffect(() => {
     if (!currentQuestion) return
     const map = mapRef.current
-    if (!map || currentQuestion.type !== 'map_tap' || !currentQuestion.targetFeature) return
+    if (!map || !mapLoaded || !currentQuestion.targetFeature) return
+
+    const isMapTap = currentQuestion.type === 'map_tap'
+    const isCoastline = currentQuestion.type === 'coastline_mcq'
+    const zoom = isCoastline ? 2.5 : (isMapTap ? 0.85 : 1.2)
+    const pitch = isCoastline ? 0 : 45
+
     const center = bboxCenter(currentQuestion.targetFeature.bbox)
-    map.flyTo({ center, zoom: 0.85, duration: 1500, pitch: 45 })
-  }, [currentQuestion])
+    map.flyTo({ center, zoom, duration: 1500, pitch })
+  }, [currentQuestion, mapLoaded])
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !currentQuestion) return
+    if (!map || !mapLoaded || !currentQuestion) return
 
     // Clear previous focus
     for (const id of focusedIdsRef.current) {
@@ -729,9 +880,29 @@ function App() {
   }, [currentQuestion?.id, featureIndex])
 
   useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+    const isSilhouette = currentQuestion?.hideLabels
+    map.setPaintProperty('country-fill', 'fill-color', [
+      'case',
+      ['==', ['feature-state', 'flash'], 'correct'],
+      '#2ecc71',
+      ['==', ['feature-state', 'flash'], 'incorrect'],
+      '#e74c3c',
+      isSilhouette ? '#000000' : (theme === 'dark' ? '#1a202a' : '#e1e8ed'),
+    ])
+    map.setPaintProperty('country-borders', 'line-color',
+      isSilhouette ? '#000000' : '#2d3644'
+    )
+    map.setPaintProperty('background', 'background-color',
+      isSilhouette ? '#111' : (theme === 'dark' ? '#0b0f14' : '#f0f4f8')
+    )
+  }, [currentQuestion?.hideLabels, theme])
+
+  useEffect(() => {
     if (!currentQuestion || currentQuestion.type !== 'river_mcq') return
     const map = mapRef.current
-    if (!map) return
+    if (!map || !mapLoaded) return
     const riverName = currentQuestion.options?.[currentQuestion.correctIndex ?? -1]
     if (!riverName) return
     const record = riverIndex.get(normalizeLabel(riverName))
@@ -841,10 +1012,15 @@ function App() {
     if (nextTimeoutRef.current) {
       window.clearTimeout(nextTimeoutRef.current)
     }
-    nextTimeoutRef.current = window.setTimeout(() => {
-      handleNext()
+    const isDead = !isCorrect && hearts <= 1
+    if (!isDead) {
+      nextTimeoutRef.current = window.setTimeout(() => {
+        handleNext()
+        nextTimeoutRef.current = null
+      }, isCorrect ? 700 : 3000)
+    } else {
       nextTimeoutRef.current = null
-    }, isCorrect ? 700 : 3000)
+    }
   }
 
   const handleHint = () => {
@@ -1044,6 +1220,16 @@ function App() {
               {currentQuestion?.type === 'flag_match' && flagSrc && (
                 <div className="flag-preview">
                   <img src={flagSrc} alt="Country flag" onError={handleFlagError} />
+                </div>
+              )}
+
+              {currentQuestion?.type === 'landmark_photo_mcq' && currentQuestion.imagePath && (
+                <div className="landmark-preview">
+                  <img
+                    src={resolvePublicAsset(currentQuestion.imagePath)}
+                    alt=""
+                    loading="lazy"
+                  />
                 </div>
               )}
 
@@ -1307,6 +1493,13 @@ function buildNextQuestion(args: {
     peakPool: CountryMeta[]
     rangePool: CountryMeta[]
     regionPool: CountryMeta[]
+    unescoPool: CountryMeta[]
+    exportsPool: CountryMeta[]
+    gdpPool: CountryMeta[]
+    landmarkPool: CountryMeta[]
+    landmarkByCca3: Map<string, LandmarkEntry[]>
+    populationRankByCca3: Map<string, number>
+    gdpRankByCca3: Map<string, number>
   }
   featureIndex: Map<string, FeatureRecord>
   queueRef: MutableRefObject<Record<QuestionType, string[]>>
@@ -1329,6 +1522,15 @@ function buildNextQuestion(args: {
     'peak_mcq',
     'range_mcq',
     'region_mcq',
+    'subregion_outlier',
+    'neighbor_count_mcq',
+    'population_rank',
+    'population_tier',
+    'population_more_than',
+    'gdp_tier',
+    'economy_exports_mcq',
+    'unesco_mcq',
+    'landmark_photo_mcq',
   ]
 
   // Filter types by level
@@ -1340,14 +1542,28 @@ function buildNextQuestion(args: {
   // Level 3+: Geography & Positioning
   if (args.level >= 3) levelTypes.push('map_tap', 'neighbor_mcq', 'population_pair', 'area_pair')
 
-  // Level 5+: Detail & Characteristics  
-  if (args.level >= 5) levelTypes.push('city_mcq', 'currency_mcq', 'landlocked_mcq', 'region_mcq')
+  // Level 5+: Detail & Characteristics
+  if (args.level >= 5) {
+    levelTypes.push('city_mcq', 'currency_mcq', 'landlocked_mcq', 'region_mcq', 'population_tier')
+  }
 
   // Level 7+: Cultural & Hydrography
-  if (args.level >= 7) levelTypes.push('river_mcq', 'language_mcq')
+  if (args.level >= 7) {
+    levelTypes.push('river_mcq', 'language_mcq', 'population_more_than')
+  }
 
-  // Level 9+: Advanced physical geography
-  if (args.level >= 9) levelTypes.push('peak_mcq', 'range_mcq')
+  // Level 11+: High Logic & Complexity
+  if (args.level >= 11) {
+    levelTypes.push('subregion_outlier', 'neighbor_count_mcq', 'population_rank')
+  }
+
+  // Level 13+: Visual Mastery
+  if (args.level >= 13) levelTypes.push('silhouette_mcq', 'coastline_mcq', 'landmark_photo_mcq')
+
+  // Level 15+: Trivia & Knowledge
+  if (args.level >= 15) {
+    levelTypes.push('flag_colors_mcq', 'gdp_tier', 'economy_exports_mcq', 'unesco_mcq')
+  }
 
   const types = levelTypes.length > 0 ? levelTypes : allTypes
 
@@ -1390,6 +1606,13 @@ function buildQuestionForType(
       peakPool: CountryMeta[]
       rangePool: CountryMeta[]
       regionPool: CountryMeta[]
+      unescoPool: CountryMeta[]
+      exportsPool: CountryMeta[]
+      gdpPool: CountryMeta[]
+      landmarkPool: CountryMeta[]
+      landmarkByCca3: Map<string, LandmarkEntry[]>
+      populationRankByCca3: Map<string, number>
+      gdpRankByCca3: Map<string, number>
     }
     featureIndex: Map<string, FeatureRecord>
     queueRef: MutableRefObject<Record<QuestionType, string[]>>
@@ -1697,6 +1920,240 @@ function buildQuestionForType(
       displayCca3s: [pair.a.cca3, pair.b.cca3].filter(Boolean) as string[],
     }
   }
+
+  if (type === 'subregion_outlier') {
+    const subregion = country.subregion
+    const continent = country.region
+    const sameSub = shuffle(args.pools.countries.filter(c => c.subregion === subregion && c.cca3 !== country.cca3)).slice(0, 2)
+    if (sameSub.length < 2) return null
+
+    // Pick 1 outlier from same continent but different subregion
+    const outliers = shuffle(args.pools.countries.filter(c => c.region === continent && c.subregion !== subregion))
+    if (!outliers.length) return null
+    const correctOutlier = outliers[0]
+
+    const finalCandidates = shuffle([country, ...sameSub, correctOutlier])
+    return {
+      id: `${type}-${country.cca3}`,
+      type,
+      prompt: `Which country does NOT belong in ${subregion}?`,
+      options: finalCandidates.map(c => c.name),
+      correctIndex: finalCandidates.indexOf(correctOutlier),
+      targetCca3: country.cca3,
+      displayCca3s: finalCandidates.map(c => c.cca3).filter(Boolean) as string[],
+    }
+  }
+
+  if (type === 'neighbor_count_mcq') {
+    const count = country.borders?.length ?? 0
+    const distractors = shuffle([count + 1, count - 1, count + 2].filter(v => v >= 0 && v !== count))
+    const finalOptions = shuffle([count, ...distractors.slice(0, 3)])
+
+    return {
+      id: `${type}-${country.cca3}`,
+      type,
+      prompt: `How many countries share a land border with ${country.name}?`,
+      options: finalOptions.map(String),
+      correctIndex: finalOptions.indexOf(count),
+      targetCca3: country.cca3,
+      displayCca3s: [country.cca3],
+    }
+  }
+
+  if (type === 'population_rank') {
+    const continentPool = args.pools.countries.filter(c => c.region === country.region && c.population > 0)
+    if (continentPool.length < 3) return null
+    const triplet = shuffle(continentPool).slice(0, 3)
+    const sorted = [...triplet].sort((a, b) => b.population - a.population)
+    const options = [
+      sorted.map(c => c.name).join(' > '),
+      shuffle([...sorted]).map(c => c.name).join(' > '),
+    ]
+    if (options[0] === options[1]) {
+      options[1] = [sorted[1], sorted[0], sorted[2]].map(c => c.name).join(' > ')
+    }
+    const finalOptions = shuffle(options)
+
+    return {
+      id: `${type}-${triplet.map(c => c.cca3).join('-')}`,
+      type,
+      prompt: `Which is the correct order from MOST to LEAST populous?`,
+      options: finalOptions,
+      correctIndex: finalOptions.indexOf(options[0]),
+      displayCca3s: triplet.map(c => c.cca3).filter(Boolean) as string[],
+    }
+  }
+
+  if (type === 'population_tier') {
+    const rank = args.pools.populationRankByCca3.get(country.cca3)
+    if (!rank) return null
+    const tiers = [
+      { label: 'Top 10', max: 10 },
+      { label: 'Top 20', max: 20 },
+      { label: 'Top 50', max: 50 },
+      { label: 'Outside Top 50', max: Infinity },
+    ]
+    const correctIndex = tiers.findIndex((tier) => rank <= tier.max)
+    if (correctIndex < 0) return null
+    return {
+      id: `${type}-${country.cca3}`,
+      type,
+      prompt: `Which population tier is ${country.name} in?`,
+      options: tiers.map((tier) => tier.label),
+      correctIndex,
+      targetCca3: country.cca3,
+      displayCca3s: [country.cca3],
+    }
+  }
+
+  if (type === 'population_more_than') {
+    const slicedPool = getPoolForLevel(args.pools.populationPool, args.level)
+    const pair = pickMetricPair(slicedPool, 'population')
+    if (!pair) return null
+    const flip = Math.random() > 0.5
+    const first = flip ? pair.b : pair.a
+    const second = flip ? pair.a : pair.b
+    const isMore = (first.population ?? 0) > (second.population ?? 0)
+    return {
+      id: `${type}-${first.cca3}-${second.cca3}`,
+      type,
+      prompt: `Is ${first.name} more populous than ${second.name}?`,
+      options: ['Yes', 'No'],
+      correctIndex: isMore ? 0 : 1,
+      optionCca3s: [first.cca3, second.cca3],
+      displayCca3s: [first.cca3, second.cca3].filter(Boolean) as string[],
+    }
+  }
+
+  if (type === 'gdp_tier') {
+    const rank = args.pools.gdpRankByCca3.get(country.cca3)
+    if (!rank) return null
+    const tiers = [
+      { label: 'Top 10', max: 10 },
+      { label: 'Top 25', max: 25 },
+      { label: 'Top 50', max: 50 },
+      { label: 'Outside Top 50', max: Infinity },
+    ]
+    const correctIndex = tiers.findIndex((tier) => rank <= tier.max)
+    if (correctIndex < 0) return null
+    return {
+      id: `${type}-${country.cca3}`,
+      type,
+      prompt: `Which GDP tier is ${country.name} in?`,
+      options: tiers.map((tier) => tier.label),
+      correctIndex,
+      targetCca3: country.cca3,
+      displayCca3s: [country.cca3],
+    }
+  }
+
+  if (type === 'economy_exports_mcq') {
+    const exportLabel = country.topExports?.[0]?.label ?? ''
+    if (!exportLabel) return null
+    const exportPool = args.pools.exportsPool.flatMap((item) => item.topExports ?? [])
+    const { options, correctIndex } = buildOptionSetFromValues(
+      exportPool.map((item) => item.label),
+      exportLabel,
+    )
+    return {
+      id: `${type}-${country.cca3}`,
+      type,
+      prompt: `Top export category for ${country.name}?`,
+      options,
+      correctIndex,
+      targetCca3: country.cca3,
+      displayCca3s: [country.cca3],
+    }
+  }
+
+  if (type === 'unesco_mcq') {
+    const siteName = country.unescoSites?.[0] ?? ''
+    if (!siteName) return null
+    const sitePool = args.pools.unescoPool.flatMap((item) => item.unescoSites ?? [])
+    const { options, correctIndex } = buildOptionSetFromValues(sitePool, siteName)
+    return {
+      id: `${type}-${country.cca3}`,
+      type,
+      prompt: `Which UNESCO World Heritage site is in ${country.name}?`,
+      options,
+      correctIndex,
+      targetCca3: country.cca3,
+      displayCca3s: [country.cca3],
+    }
+  }
+
+  if (type === 'landmark_photo_mcq') {
+    const landmarks = args.pools.landmarkByCca3.get(country.cca3 ?? '') ?? []
+    if (!landmarks.length) return null
+    const landmark = landmarks[Math.floor(Math.random() * landmarks.length)]
+    const slicedPool = getPoolForLevel(args.pools.countries, args.level)
+    const { options, correctIndex, optionCca3s } = buildOptionSetForCountries(
+      slicedPool,
+      country,
+    )
+    return {
+      id: `${type}-${country.cca3}-${landmark.id}`,
+      type,
+      prompt: `Which country is shown in this landmark photo?`,
+      options,
+      correctIndex,
+      optionCca3s,
+      imagePath: landmark.imagePath,
+      targetCca3: country.cca3,
+      displayCca3s: [country.cca3],
+    }
+  }
+
+  if (type === 'silhouette_mcq') {
+    const slicedPool = getPoolForLevel(args.pools.mapPool, args.level)
+    const { options, correctIndex, optionCca3s } = buildOptionSetForCountries(slicedPool, country)
+    return {
+      id: `${type}-${country.cca3}`,
+      type,
+      prompt: `Identify this country by its shape:`,
+      options: options,
+      correctIndex,
+      optionCca3s,
+      targetCca3: country.cca3,
+      displayCca3s: [country.cca3],
+      hideLabels: true,
+    }
+  }
+
+  if (type === 'coastline_mcq') {
+    const targetFeature = args.featureIndex.get(country.cca3 ?? '')
+    if (!targetFeature) return null
+    const slicedPool = getPoolForLevel(args.pools.countries, args.level)
+    const { options, correctIndex } = buildOptionSetForCountries(slicedPool, country)
+    return {
+      id: `${type}-${country.cca3}`,
+      type,
+      prompt: `Which island or coastline is shown here?`,
+      options,
+      correctIndex,
+      targetCca3: country.cca3,
+      displayCca3s: [country.cca3],
+      targetFeature,
+    }
+  }
+
+  if (type === 'flag_colors_mcq') {
+    const hasThree = [
+      'FRA', 'DEU', 'ITA', 'BEL', 'ROU', 'COL', 'VEN', 'ECU', 'EST', 'LTU', 'LVA',
+      'RUS', 'NLD', 'LUX', 'BUL', 'IRL', 'HUN', 'SLE', 'GAB', 'TCD', 'MLI', 'GIN', 'CIV'
+    ].includes(country.cca3 ?? '')
+    return {
+      id: `${type}-${country.cca3}`,
+      type,
+      prompt: `Does the flag of ${country.name} have at least THREE distinct colors?`,
+      options: ['Yes', 'No'],
+      correctIndex: hasThree ? 0 : 1,
+      targetCca3: country.cca3,
+      displayCca3s: [country.cca3],
+    }
+  }
+
+  return null
 }
 
 function getNextCountryForType(
@@ -1717,6 +2174,11 @@ function getNextCountryForType(
       peakPool: CountryMeta[]
       rangePool: CountryMeta[]
       regionPool: CountryMeta[]
+      unescoPool: CountryMeta[]
+      exportsPool: CountryMeta[]
+      gdpPool: CountryMeta[]
+      landmarkPool: CountryMeta[]
+      countries: CountryMeta[]
     }
     queueRef: MutableRefObject<Record<QuestionType, string[]>>
     level: number
@@ -1729,7 +2191,7 @@ function getNextCountryForType(
         ? args.pools.flagPool
         : type === 'capital_mcq'
           ? args.pools.capitalPool
-          : type === 'neighbor_mcq'
+          : type === 'neighbor_mcq' || type === 'neighbor_count_mcq'
             ? args.pools.neighborPool
             : type === 'currency_mcq'
               ? args.pools.currencyPool
@@ -1739,7 +2201,10 @@ function getNextCountryForType(
                   ? args.pools.riverPool
                   : type === 'language_mcq'
                     ? args.pools.languagePool
-                    : type === 'population_pair'
+                    : type === 'population_pair' ||
+                      type === 'population_rank' ||
+                      type === 'population_tier' ||
+                      type === 'population_more_than'
                       ? args.pools.populationPool
                       : type === 'area_pair'
                         ? args.pools.areaPool
@@ -1749,7 +2214,17 @@ function getNextCountryForType(
                             ? args.pools.peakPool
                             : type === 'range_mcq'
                               ? args.pools.rangePool
-                              : args.pools.regionPool
+                              : type === 'region_mcq' || type === 'subregion_outlier'
+                                ? args.pools.regionPool
+                                : type === 'unesco_mcq'
+                                  ? args.pools.unescoPool
+                                  : type === 'economy_exports_mcq'
+                                    ? args.pools.exportsPool
+                                    : type === 'gdp_tier'
+                                      ? args.pools.gdpPool
+                                      : type === 'landmark_photo_mcq'
+                                        ? args.pools.landmarkPool
+                                        : args.pools.countries
   if (!pool.length) return null
 
   // Slice pool based on level
@@ -1794,6 +2269,20 @@ function buildOptionSet(
     if (options.size >= 4) break
   }
 
+  const finalOptions = shuffle(Array.from(options))
+  const correctIndex = finalOptions.indexOf(correctValue)
+  return { options: finalOptions, correctIndex }
+}
+
+function buildOptionSetFromValues(values: string[], correctValue: string) {
+  const options = new Set<string>()
+  if (correctValue) options.add(correctValue)
+  const shuffled = shuffle(values.filter(Boolean))
+  for (const value of shuffled) {
+    if (!value || value === correctValue) continue
+    options.add(value)
+    if (options.size >= 4) break
+  }
   const finalOptions = shuffle(Array.from(options))
   const correctIndex = finalOptions.indexOf(correctValue)
   return { options: finalOptions, correctIndex }
@@ -1846,16 +2335,30 @@ function getPointsForQuestion(type: QuestionType): number {
   switch (type) {
     case 'map_tap':
       return 1000
+    case 'coastline_mcq':
+    case 'silhouette_mcq':
+      return 900
     case 'river_mcq':
       return 800
+    case 'landmark_photo_mcq':
+      return 750
+    case 'neighbor_count_mcq':
+    case 'subregion_outlier':
     case 'neighbor_mcq':
     case 'peak_mcq':
     case 'range_mcq':
+    case 'unesco_mcq':
+    case 'economy_exports_mcq':
+    case 'gdp_tier':
       return 600
+    case 'population_rank':
     case 'capital_mcq':
     case 'currency_mcq':
     case 'language_mcq':
     case 'city_mcq':
+    case 'flag_colors_mcq':
+    case 'population_tier':
+    case 'population_more_than':
       return 500
     case 'flag_match':
     case 'population_pair':

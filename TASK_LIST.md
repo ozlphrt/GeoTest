@@ -1,4 +1,4 @@
-TASK_LIST v2.0.0
+TASK_LIST v2.1.0
 
 Status: Drafted initial tasks.
 
@@ -28,3 +28,9 @@ Planned Tasks:
 10) Add visual feedback, scoring, and progression.
 11) Add performance tracking entries to PERFORMANCE_LOG.md.
 12) Validate coordinate conventions and debug overlays.
+13) Add new question modes (data-backed):
+    - UNESCO sites: "Which site is in X?" (requires UNESCO dataset).
+    - Landmarks/photos: identify country from a photo (requires image assets).
+    - Shape match: pick matching outline among 4 silhouettes (reuse silhouette mode).
+    - Population tiers: top-10/20/50 and "more populous than" (uses population data).
+    - Economy: top exports, GDP tier (requires datasets).

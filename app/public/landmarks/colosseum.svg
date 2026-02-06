@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Colosseum">
+  <rect width="512" height="512" fill="#0b0f14"/>
+  <path d="M96 160h320v220H96z" fill="#c7a574"/>
+  <path d="M128 200h40v40h-40zM192 200h40v40h-40zM256 200h40v40h-40zM320 200h40v40h-40z" fill="#0b0f14"/>
+  <path d="M128 260h40v40h-40zM192 260h40v40h-40zM256 260h40v40h-40zM320 260h40v40h-40z" fill="#0b0f14"/>
+  <path d="M128 320h40v40h-40zM192 320h40v40h-40zM256 320h40v40h-40zM320 320h40v40h-40z" fill="#0b0f14"/>
+  <path d="M80 140h352v28H80z" fill="#c7a574"/>
+  <path d="M72 380h368v24H72z" fill="#c7a574"/>
+  <path d="M120 140l-12-36h312l-12 36H120z" fill="#c7a574"/>
+</svg>

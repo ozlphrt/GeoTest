@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Statue of Liberty">
+  <rect width="512" height="512" fill="#0b0f14"/>
+  <path d="M248 64h16v64h-16z" fill="#7dd3c7"/>
+  <path d="M232 128h48l-10 28h-28l-10-28z" fill="#7dd3c7"/>
+  <path d="M224 156h64l-12 36h-40l-12-36z" fill="#7dd3c7"/>
+  <path d="M206 192h100l-16 64h-68l-16-64z" fill="#7dd3c7"/>
+  <path d="M192 256h128l-18 72H210l-18-72z" fill="#7dd3c7"/>
+  <path d="M176 328h160l-20 80H196l-20-80z" fill="#7dd3c7"/>
+  <rect x="156" y="408" width="200" height="48" fill="#7dd3c7"/>
+  <path d="M264 40l20 12-12 22-18-10 10-24z" fill="#f6c453"/>
+  <path d="M276 18l18 8-6 20-20-8 8-20z" fill="#f6c453"/>
+  <path d="M208 116l24-12 6 12-22 12-8-12z" fill="#7dd3c7"/>
+  <path d="M304 116l-24-12-6 12 22 12 8-12z" fill="#7dd3c7"/>
+</svg>

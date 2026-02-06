@@ -1,4 +1,4 @@
-PROJECT_OVERVIEW v1.4.0
+PROJECT_OVERVIEW v1.5.0
 
 Project: GeoTest PWA
 Goal: Massively visual, interactive geography knowledge testing for mobile.
@@ -10,6 +10,8 @@ Scope v1:
 - Offline: partial (data + flags cached; map online).
 - UI: dark glassmorphic panels.
 - Data sources: Natural Earth 10m + mledoze/countries + FlagCDN.
+- Data sources (extended): UNESCO World Heritage (whc001), World Bank GDP (NY.GDP.MKTP.CD),
+  OEC trade exports (trade_i_baci_a_22), landmark imagery (in-house CC0 placeholders).
 - App framework: React + TypeScript (Vite).
 - Mapping: MapLibre GL JS with OSM raster tiles.
 

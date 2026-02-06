@@ -1,4 +1,4 @@
-DECISIONS v1.4.0
+DECISIONS v1.6.0
 
 2026-02-04:
 - Scope v1: mixed quiz rotation (map tap, flag match, capital MCQ).
@@ -13,6 +13,19 @@ DECISIONS v1.4.0
 - Added geography/identity datasets: Natural Earth geography regions + elevation points.
 - Added geography/identity modes: landlocked/coastal, highest peak, mountain range, physical region.
 - Deployment target: GitHub Pages via Actions (app/dist).
+
+2026-02-05:
+- Queued new question categories to add next (data required):
+  - UNESCO sites: "Which site is in X?" (needs UNESCO dataset).
+  - Landmarks/photos: identify country from a photo (needs image assets).
+  - Shape match: pick matching outline among 4 silhouettes (reuse silhouette mode).
+  - Population tiers: top-10/20/50 and "more populous than" (uses population data).
+  - Economy: top exports, GDP tier (needs datasets).
+- Selected data sources for new modes:
+  - UNESCO World Heritage List (DataHub dataset `whc001`).
+  - World Bank GDP (indicator `NY.GDP.MKTP.CD`).
+  - OEC exports (cube `trade_i_baci_a_22`).
+  - Landmark imagery: in-house CC0 placeholder SVGs.
 
 Acceptance criteria (locked):
 1) PWA installs on mobile and launches full-screen with a map background.

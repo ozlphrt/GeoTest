@@ -22,6 +22,13 @@ const COUNTRIES_URL =
   'https://raw.githubusercontent.com/mledoze/countries/master/countries.json'
 const CITIES_URL =
   'https://raw.githubusercontent.com/samayo/country-json/master/src/country-by-cities.json'
+const UNESCO_URL = 'https://data.unesco.org/explore/dataset/whc001/download/?format=json'
+const WORLD_BANK_GDP_URL =
+  'https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.CD'
+const OEC_CUBE = 'trade_i_baci_a_22'
+const OEC_MEMBERS_URL =
+  `https://api-v2.oec.world/tesseract/members?cube=${OEC_CUBE}&level=Exporter%20Country&limit=20000`
+const OEC_DATA_URL = 'https://api-v2.oec.world/tesseract/data.jsonrecords'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -113,6 +120,14 @@ function normalizeName(value) {
     .replace(/\bthe\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function normalizeIsoList(value) {
+  if (!value) return []
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 function buildNameIndex(countries) {
@@ -259,6 +274,43 @@ function samplePolygonPoints(geometry, maxSamples = 10) {
   return sampled
 }
 
+async function fetchWorldBankIndicator(urlBase) {
+  const perPage = 20000
+  const all = []
+  let page = 1
+  let pages = 1
+  while (page <= pages) {
+    const url = `${urlBase}?format=json&per_page=${perPage}&page=${page}`
+    const payload = await fetchJson(url)
+    if (!Array.isArray(payload) || payload.length < 2) break
+    const meta = payload[0]
+    const data = payload[1]
+    pages = meta?.pages ?? 1
+    if (Array.isArray(data)) {
+      all.push(...data)
+    }
+    page += 1
+  }
+  return all
+}
+
+async function fetchOecMembers() {
+  const response = await fetchJson(OEC_MEMBERS_URL)
+  return Array.isArray(response?.members) ? response.members : []
+}
+
+function buildOecExportsUrl({ exporterId, limit = 6 } = {}) {
+  const params = new URLSearchParams()
+  params.set('cube', OEC_CUBE)
+  params.set('drilldowns', 'Year,HS2,Exporter Country')
+  params.set('measures', 'Trade Value')
+  params.set('include', `Exporter Country:${exporterId}`)
+  params.set('time', 'Year.latest')
+  params.set('sort', '-Trade Value')
+  params.set('limit', `${limit},0`)
+  return `${OEC_DATA_URL}?${params.toString()}`
+}
+
 function getGeoRegionName(properties) {
   return (
     properties?.NAME ??
@@ -334,6 +386,16 @@ async function main() {
   const citiesPath = path.join(RAW_DIR, 'country_by_cities.json')
   await writeFile(citiesPath, JSON.stringify(cityEntries, null, 2), 'utf-8')
 
+  console.log('Downloading UNESCO World Heritage dataset...')
+  const unescoRaw = await fetchJson(UNESCO_URL)
+  const unescoPath = path.join(RAW_DIR, 'unesco_whc001.json')
+  await writeFile(unescoPath, JSON.stringify(unescoRaw, null, 2), 'utf-8')
+
+  console.log('Downloading World Bank GDP dataset...')
+  const gdpRaw = await fetchWorldBankIndicator(WORLD_BANK_GDP_URL)
+  const gdpPath = path.join(RAW_DIR, 'world_bank_gdp.json')
+  await writeFile(gdpPath, JSON.stringify(gdpRaw, null, 2), 'utf-8')
+
   console.log('Downloading Natural Earth rivers...')
   const riversText = await fetchText(NE_RIVERS_URL)
   const riversPath = path.join(RAW_DIR, 'ne_50m_rivers.geojson')
@@ -353,6 +415,12 @@ async function main() {
   await downloadFlags(countries)
 
   const nameIndex = buildNameIndex(countries)
+  const countriesByCca3 = new Map()
+  const cca2ToCca3 = new Map()
+  for (const country of countries) {
+    if (country.cca3) countriesByCca3.set(country.cca3, country)
+    if (country.cca2 && country.cca3) cca2ToCca3.set(country.cca2.toUpperCase(), country.cca3)
+  }
   const cityMap = new Map()
   for (const entry of cityEntries) {
     const nameKey = normalizeName(entry.country)
@@ -363,6 +431,111 @@ async function main() {
     const cities = Array.isArray(entry.cities) ? entry.cities : []
     cityMap.set(cca3, cities)
   }
+
+  console.log('Normalizing World Bank GDP...')
+  const gdpByCca3 = new Map()
+  for (const entry of gdpRaw) {
+    const cca3 = entry?.countryiso3code
+    if (!cca3 || !countriesByCca3.has(cca3)) continue
+    const value = Number(entry?.value)
+    const year = Number(entry?.date)
+    if (!Number.isFinite(value) || !Number.isFinite(year)) continue
+    const prev = gdpByCca3.get(cca3)
+    if (!prev || year > prev.year) {
+      gdpByCca3.set(cca3, { value, year })
+    }
+  }
+  const gdpSorted = [...gdpByCca3.entries()].sort((a, b) => b[1].value - a[1].value)
+  const gdpRankByCca3 = new Map()
+  gdpSorted.forEach(([cca3], idx) => gdpRankByCca3.set(cca3, idx + 1))
+
+  console.log('Normalizing UNESCO sites...')
+  const unescoSites = []
+  const unescoByCca3 = new Map()
+  for (const record of unescoRaw) {
+    const fields = record?.fields ?? {}
+    const name =
+      fields.name_en ?? fields.name_fr ?? fields.name_es ?? fields.name_ru ?? fields.name_ar ?? null
+    if (!name) continue
+    const isoCodes = normalizeIsoList(fields.iso_codes)
+    const statesNames = normalizeIsoList(fields.states_names)
+    const cca3s = new Set()
+
+    for (const iso2 of isoCodes) {
+      const mapped = cca2ToCca3.get(iso2.toUpperCase())
+      if (mapped) cca3s.add(mapped)
+    }
+
+    if (cca3s.size === 0 && statesNames.length) {
+      for (const countryName of statesNames) {
+        const match = nameIndex.get(normalizeName(countryName))
+        if (match?.cca3) cca3s.add(match.cca3)
+      }
+    }
+
+    if (!cca3s.size) continue
+    const entry = {
+      id: fields.id_no ?? record.recordid ?? record.datasetid ?? name,
+      name,
+      category: fields.category ?? null,
+      year: Number(fields.date_inscribed) || null,
+      cca3s: Array.from(cca3s),
+      isoCodes,
+      states: statesNames,
+    }
+    unescoSites.push(entry)
+    for (const cca3 of cca3s) {
+      if (!unescoByCca3.has(cca3)) unescoByCca3.set(cca3, new Set())
+      unescoByCca3.get(cca3).add(name)
+    }
+  }
+
+  console.log('Downloading OEC export members...')
+  const oecMembers = await fetchOecMembers()
+  const oecTargets = oecMembers
+    .map((member) => {
+      const country = nameIndex.get(normalizeName(member.caption))
+      return country?.cca3 ? { id: member.key, name: member.caption, cca3: country.cca3 } : null
+    })
+    .filter(Boolean)
+
+  const maxOecCountries = Number(process.env.OEC_MAX_COUNTRIES || 120)
+  const oecQueue = oecTargets.slice(0, maxOecCountries)
+  const exportsByCca3 = new Map()
+  const oecConcurrency = Number(process.env.OEC_CONCURRENCY || 4)
+  let oecIndex = 0
+
+  async function oecWorker() {
+    while (oecIndex < oecQueue.length) {
+      const currentIndex = oecIndex
+      oecIndex += 1
+      const target = oecQueue[currentIndex]
+      if (!target) continue
+      try {
+        const url = buildOecExportsUrl({ exporterId: target.id, limit: 6 })
+        const payload = await fetchJson(url)
+        const rows = Array.isArray(payload?.data) ? payload.data : []
+        const topExports = rows
+          .map((row) => ({
+            hs2: row['HS2 Code'] ?? null,
+            label: row['HS2 Description'] ?? null,
+            tradeValue: Number(row['Trade Value']) || 0,
+          }))
+          .filter((row) => row.label)
+          .slice(0, 3)
+        if (topExports.length) {
+          exportsByCca3.set(target.cca3, topExports)
+        }
+      } catch (error) {
+        console.warn(`OEC exports fetch failed for ${target.name}:`, error.message)
+      } finally {
+        await sleep(200)
+      }
+    }
+  }
+
+  console.log('Downloading OEC exports...')
+  await Promise.all(Array.from({ length: oecConcurrency }, () => oecWorker()))
 
   const merged = countries.map((country) => ({
     cca2: country.cca2 ?? null,
@@ -387,6 +560,13 @@ async function main() {
     physicalRegions: [],
     flagSvg: country.cca2 ? `/flags/svg/${country.cca2}.svg` : null,
     flagPng: country.cca2 ? `/flags/png/${country.cca2}.png` : null,
+    gdpUsd: gdpByCca3.get(country.cca3)?.value ?? null,
+    gdpYear: gdpByCca3.get(country.cca3)?.year ?? null,
+    gdpRank: gdpRankByCca3.get(country.cca3) ?? null,
+    topExports: exportsByCca3.get(country.cca3) ?? [],
+    unescoSites: unescoByCca3.has(country.cca3)
+      ? Array.from(unescoByCca3.get(country.cca3))
+      : [],
   }))
 
   const mergedPath = path.join(OUT_DIR, 'countries_merged.json')
@@ -576,6 +756,45 @@ async function main() {
   }
 
   await writeFile(mergedPath, JSON.stringify(merged, null, 2), 'utf-8')
+
+  const unescoOutPath = path.join(OUT_DIR, 'unesco_sites.json')
+  await writeFile(
+    unescoOutPath,
+    JSON.stringify({ generatedAt: new Date().toISOString(), sites: unescoSites }, null, 2),
+    'utf-8',
+  )
+
+  const gdpOutPath = path.join(OUT_DIR, 'gdp_by_country.json')
+  await writeFile(
+    gdpOutPath,
+    JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        indicator: 'NY.GDP.MKTP.CD',
+        values: Object.fromEntries(
+          [...gdpByCca3.entries()].map(([cca3, info]) => [cca3, info]),
+        ),
+      },
+      null,
+      2,
+    ),
+    'utf-8',
+  )
+
+  const exportsOutPath = path.join(OUT_DIR, 'exports_by_country.json')
+  await writeFile(
+    exportsOutPath,
+    JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        cube: OEC_CUBE,
+        values: Object.fromEntries(exportsByCca3.entries()),
+      },
+      null,
+      2,
+    ),
+    'utf-8',
+  )
 
   console.log(`Unresolved features: ${unresolved.length}`)
   if (unresolved.length) {

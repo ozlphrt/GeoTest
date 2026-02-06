@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Eiffel Tower">
+  <rect width="512" height="512" fill="#0b0f14"/>
+  <path d="M256 40l-26 76h52l-26-76z" fill="#d9a441"/>
+  <path d="M200 140h112l-18 60H218l-18-60z" fill="#d9a441"/>
+  <path d="M168 220h176l-18 62H186l-18-62z" fill="#d9a441"/>
+  <path d="M120 320h272l-30 72H150l-30-72z" fill="#d9a441"/>
+  <path d="M92 408h328v32H92z" fill="#d9a441"/>
+  <path d="M168 220l88-180 88 180" stroke="#d9a441" stroke-width="12" fill="none"/>
+  <path d="M200 320l56-120 56 120" stroke="#d9a441" stroke-width="10" fill="none"/>
+</svg>

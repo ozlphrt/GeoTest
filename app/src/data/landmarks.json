@@ -1,0 +1,32 @@
+[
+  {
+    "id": "eiffel_tower",
+    "title": "Eiffel Tower",
+    "country": "France",
+    "cca3": "FRA",
+    "imagePath": "/landmarks/eiffel_tower.svg",
+    "license": "CC0-1.0",
+    "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "credit": "In-house CC0 illustration"
+  },
+  {
+    "id": "statue_of_liberty",
+    "title": "Statue of Liberty",
+    "country": "United States",
+    "cca3": "USA",
+    "imagePath": "/landmarks/statue_of_liberty.svg",
+    "license": "CC0-1.0",
+    "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "credit": "In-house CC0 illustration"
+  },
+  {
+    "id": "colosseum",
+    "title": "Colosseum",
+    "country": "Italy",
+    "cca3": "ITA",
+    "imagePath": "/landmarks/colosseum.svg",
+    "license": "CC0-1.0",
+    "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "credit": "In-house CC0 illustration"
+  }
+]

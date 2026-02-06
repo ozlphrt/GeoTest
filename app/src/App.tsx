@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
+import { useRegisterSW } from 'virtual:pwa-register/react'
+
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './App.css'
@@ -123,6 +125,7 @@ type LandmarkEntry = {
   credit: string
 }
 
+
 function App() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -131,15 +134,11 @@ function App() {
   const flashedIdsRef = useRef<string[]>([])
   const focusedIdsRef = useRef<string[]>([])
   const nextTimeoutRef = useRef<number | null>(null)
+  const settingsRef = useRef<HTMLDivElement | null>(null)
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   )
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const [messageOverlay, setMessageOverlay] = useState<{
-    isOpen: boolean
-    message: string
-    type: 'correct' | 'incorrect'
-  }>({ isOpen: false, message: '', type: 'incorrect' })
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [isDataLoaded, setIsDataLoaded] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -163,9 +162,21 @@ function App() {
   const [shakeIndex, setShakeIndex] = useState<number | null>(null)
   const [isLevelUp, setIsLevelUp] = useState(false)
   const [mastery, setMastery] = useState<Record<string, number>>({})
+  const [completedQuestions, setCompletedQuestions] = useState<string[]>([])
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW()
+
   const [isAtlasOpen, setIsAtlasOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [achievements, setAchievements] = useState<string[]>([])
   const [notification, setNotification] = useState<{ id: string; title: string } | null>(null)
+  const [levelStartScore, setLevelStartScore] = useState(0)
+  const [comboTip, setComboTip] = useState<{ message: string; visible: boolean }>({ message: '', visible: false })
+  const [guidanceTip, setGuidanceTip] = useState<string | null>(null)
+  const [scorePopups, setScorePopups] = useState<{ id: string; x: number; y: number; value: string }[]>([])
+  const [mapShake, setMapShake] = useState(false)
 
   const countryPools = useMemo(() => {
     const countries = countriesData as CountryMeta[]
@@ -338,10 +349,11 @@ function App() {
       queueRef,
       typeIndexRef,
       level,
-      idPrefix: `${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      idPrefix: `${Date.now()} -${Math.random().toString(36).substring(7)} `,
+      completedQuestions,
     })
     setCurrentQuestion(question)
-  }, [countryPools, featureIndex, level])
+  }, [countryPools, featureIndex, level, completedQuestions])
 
   const queueRef = useRef<Record<QuestionType, string[]>>({
     map_tap: [],
@@ -380,11 +392,17 @@ function App() {
     setCurrentStreak(0)
     setHintsLeft(3)
     setSkipsLeft(3)
-    setMessageOverlay({ isOpen: false, message: '', type: 'incorrect' })
     if (nextTimeoutRef.current) {
       window.clearTimeout(nextTimeoutRef.current)
       nextTimeoutRef.current = null
     }
+
+    // Penalty logic: Reset score to start of level
+    setScore(levelStartScore)
+    setGuidanceTip("Game Over! Score reverted to Level start.")
+    setTimeout(() => setGuidanceTip(null), 3500)
+    setComboTip({ message: 'Score Reverted!', visible: true })
+    setTimeout(() => setComboTip(prev => ({ ...prev, visible: false })), 2000)
 
     // Refresh question if it was stuck
     const question = buildNextQuestion({
@@ -393,7 +411,8 @@ function App() {
       queueRef,
       typeIndexRef,
       level: 1,
-      idPrefix: `reset-${Date.now()}`,
+      idPrefix: `reset - ${Date.now()} `,
+      completedQuestions,
     })
     setCurrentQuestion(question)
   }
@@ -419,6 +438,7 @@ function App() {
         if (typeof data.isMuted === 'boolean') setIsMuted(data.isMuted)
         if (data.mastery) setMastery(data.mastery)
         if (Array.isArray(data.achievements)) setAchievements(data.achievements)
+        if (Array.isArray(data.completedQuestions)) setCompletedQuestions(data.completedQuestions)
       } catch (e) {
         console.error('Failed to load progress', e)
       }
@@ -441,10 +461,11 @@ function App() {
       theme,
       isMuted,
       mastery,
-      achievements
+      achievements,
+      completedQuestions
     }))
     document.body.classList.toggle('light-mode', theme === 'light')
-  }, [highScore, score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements])
+  }, [highScore, score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements, completedQuestions])
 
   useEffect(() => {
     if (!notification) return
@@ -514,6 +535,18 @@ function App() {
   }, [])
 
   useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+        setIsSettingsOpen(false)
+      }
+    }
+    if (isSettingsOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isSettingsOpen])
+
+  useEffect(() => {
     let isActive = true
 
     const loadGeoJson = async () => {
@@ -521,7 +554,7 @@ function App() {
         setLoadingProgress((p) => p + 10)
         const response = await fetch(admin0GeoJsonUrl)
         if (!response.ok) {
-          throw new Error(`GeoJSON fetch failed: ${response.status}`)
+          throw new Error(`GeoJSON fetch failed: ${response.status} `)
         }
         setLoadingProgress((p) => p + 30)
         const data = (await response.json()) as { features: GeoFeature[] }
@@ -557,7 +590,7 @@ function App() {
         setLoadingProgress((p) => p + 10)
         const response = await fetch(riversGeoJsonUrl)
         if (!response.ok) {
-          throw new Error(`Rivers fetch failed: ${response.status}`)
+          throw new Error(`Rivers fetch failed: ${response.status} `)
         }
         setLoadingProgress((p) => p + 30)
         const data = (await response.json()) as { features: RiverFeature[] }
@@ -719,7 +752,6 @@ function App() {
   useEffect(() => {
     setSelectedIndex(null)
     flagFallbackRef.current = false
-    setMessageOverlay({ isOpen: false, message: '', type: 'incorrect' })
     setRemovedIndices([])
   }, [currentQuestion?.id])
 
@@ -754,16 +786,7 @@ function App() {
         flashTimeoutRef,
       })
 
-      const clickedName =
-        clickedCca3 && countryPools.countriesByCca3.get(clickedCca3)?.name
       if (!isCorrect) {
-        const errorLabel = clickedName ? clickedName : 'WRONG AREA'
-        setMessageOverlay({
-          isOpen: true,
-          message: errorLabel,
-          type: 'incorrect'
-        })
-
         setHearts((h) => {
           const next = h - 1
           if (next <= 0) {
@@ -771,18 +794,32 @@ function App() {
           }
           return next
         })
-      } else {
-        setMessageOverlay({ isOpen: true, message: 'CORRECT!', type: 'correct' })
       }
 
       if (isCorrect) {
+        setCompletedQuestions(prev => [...prev, `${currentQuestion.type}-${correctCca3}`])
+        const comboMult = 1 + (currentStreak * 0.2)
         const basePoints = getPointsForQuestion(currentQuestion.type)
-        const points = Math.round(basePoints * (1 + currentStreak * 0.1) * (1 + (level - 1) * 0.2))
+        const points = Math.round(basePoints * (1 + (level - 1) * 0.2) * comboMult)
+
+        // Popup logic
+        const popupId = `${Date.now()}-${Math.random()}`
+        setScorePopups(prev => [...prev, { id: popupId, x: event.point.x, y: event.point.y, value: `+${formatScore(points)}` }])
+        setTimeout(() => setScorePopups(prev => prev.filter(p => p.id !== popupId)), 1000)
+
         setScore((s) => {
           const next = s + points
           if (next > highScore) setHighScore(next)
           return next
         })
+
+        if (currentStreak > 0 && (currentStreak + 1) % 5 === 0) {
+          const nextMult = 1 + ((currentStreak + 1) * 0.2)
+          setGuidanceTip(`Combo x${nextMult.toFixed(1)}! Earnings significantly boosted.`)
+          setTimeout(() => setGuidanceTip(null), 3000)
+          setComboTip({ message: `Combo x${nextMult.toFixed(1)}!`, visible: true })
+          setTimeout(() => setComboTip(prev => ({ ...prev, visible: false })), 1500)
+        }
 
         setCorrectInLevel((prev) => {
           const next = prev + 1
@@ -811,6 +848,8 @@ function App() {
       } else {
         setCorrectInLevel(0)
         setCurrentStreak(0)
+        setMapShake(true)
+        setTimeout(() => setMapShake(false), 500)
         if (nextTimeoutRef.current) {
           window.clearTimeout(nextTimeoutRef.current)
         }
@@ -828,7 +867,7 @@ function App() {
     return () => {
       map.off('click', handleMapTap)
     }
-  }, [currentQuestion, level, currentStreak, hearts, score, setCorrectInLevel, setGameOver, setHearts, setLevel, setMessageOverlay, setScore, setCurrentStreak, handleNext, countryPools, featureIndex])
+  }, [currentQuestion, level, currentStreak, hearts, score, setCorrectInLevel, setGameOver, setHearts, setLevel, setScore, setCurrentStreak, handleNext, countryPools, featureIndex])
 
   useEffect(() => {
     if (!currentQuestion) return
@@ -838,10 +877,19 @@ function App() {
     const isMapTap = currentQuestion.type === 'map_tap'
     const isCoastline = currentQuestion.type === 'coastline_mcq'
     const zoom = isCoastline ? 2.5 : (isMapTap ? 0.85 : 1.2)
-    const pitch = isCoastline ? 0 : 45
 
     const center = bboxCenter(currentQuestion.targetFeature.bbox)
-    map.flyTo({ center, zoom, duration: 1500, pitch })
+    const randomBearing = (Math.random() - 0.5) * 20 // ±10 deg
+    const dynamicPitch = currentQuestion.type === 'coastline_mcq' ? 0 : 35 + Math.random() * 25 // 35-60 deg
+
+    map.flyTo({
+      center,
+      zoom,
+      duration: 1800,
+      pitch: dynamicPitch,
+      bearing: randomBearing,
+      essential: true
+    })
   }, [currentQuestion, mapLoaded])
 
   useEffect(() => {
@@ -935,19 +983,42 @@ function App() {
 
     if (isCorrect) {
       if (correctCca3) {
-        setMastery((prev) => ({
-          ...prev,
-          [correctCca3]: (prev[correctCca3] ?? 0) + 1,
-        }))
+        setMastery((prev) => {
+          const nextVal = (prev[correctCca3] ?? 0) + 1
+          const next = { ...prev, [correctCca3]: nextVal }
+
+          // Mastery Achievements
+          const masteredCount = Object.values(next).filter(v => v >= 1).length
+          if (masteredCount === 100) triggerAchievement('atlas100', 'World Completionist (100 Mastered)')
+          else if (masteredCount === 50) triggerAchievement('atlas50', 'Atlas Pro (50 Mastered)')
+          else if (masteredCount === 25) triggerAchievement('atlas25', 'Globe Trotter (25 Mastered)')
+
+          return next
+        })
       }
+      setCompletedQuestions(prev => [...prev, `${currentQuestion.type}-${correctCca3}`])
       playGameSound('correct', isMuted)
-      setMessageOverlay({ isOpen: true, message: 'CORRECT!', type: 'correct' })
       const basePoints = getPointsForQuestion(currentQuestion.type)
       const points = Math.round(basePoints * (1 + currentStreak * 0.1) * (1 + (level - 1) * 0.2))
       setScore((s) => {
         const next = s + points
+
+        // Popup logic
+        const popupId = `${Date.now()}-${Math.random()}`
+        // Center of screen for MCQ popups
+        const x = event?.clientX ?? window.innerWidth / 2
+        const y = event?.clientY ?? window.innerHeight / 2
+        setScorePopups(prev => [...prev, { id: popupId, x, y, value: `+${formatScore(points)}` }])
+        setTimeout(() => setScorePopups(prev => prev.filter(p => p.id !== popupId)), 1000)
+
         if (next > highScore) setHighScore(next)
-        if (next >= 10000) triggerAchievement('elite', 'Geographic Elite (10k Pts)')
+
+        // Tiered Score Achievements
+        if (next >= 1000000) triggerAchievement('legend', 'Geographic Legend (1M Pts)')
+        else if (next >= 500000) triggerAchievement('master', 'Atlas Master (500k Pts)')
+        else if (next >= 100000) triggerAchievement('star', 'Rising Star (100k Pts)')
+        else if (next >= 25000) triggerAchievement('elite', 'Geographic Elite (25k Pts)')
+
         return next
       })
 
@@ -956,11 +1027,23 @@ function App() {
         if (next >= 5) {
           const nextLevel = level + 1
           setLevel(nextLevel)
-          if (nextLevel === 5) triggerAchievement('lvl5', 'Veteran Traveler (Level 5)')
+
+          // Tiered Level Achievements
+          if (nextLevel === 50) triggerAchievement('lvl50', 'World Sovereign (Level 50)')
+          else if (nextLevel === 30) triggerAchievement('lvl30', 'Earth Master (Level 30)')
+          else if (nextLevel === 15) triggerAchievement('lvl15', 'Global Navigator (Level 15)')
+          else if (nextLevel === 8) triggerAchievement('lvl8', 'Veteran Traveler (Level 8)')
+
           setIsLevelUp(true)
           playGameSound('levelup', isMuted)
           setTimeout(() => setIsLevelUp(false), 2000)
           setHearts((h) => Math.min(h + 1, 3))
+
+          // Lock-in score
+          setLevelStartScore(score + points)
+          setGuidanceTip("Progress Saved! Points locked in.")
+          setTimeout(() => setGuidanceTip(null), 3000)
+
           return 0
         }
         return next
@@ -968,7 +1051,19 @@ function App() {
 
       setCurrentStreak((prev) => {
         const next = prev + 1
-        if (next === 10) triggerAchievement('streak10', 'Unstoppable! (10 Streak)')
+
+        // Multiplier guidance
+        if (next > 0 && next % 5 === 0) {
+          const mult = 1 + (next * 0.2)
+          setGuidanceTip(`Combo x${mult.toFixed(1)}! Points are now heavily multiplied.`)
+          setTimeout(() => setGuidanceTip(null), 3000)
+        }
+
+        // Tiered Streak Achievements
+        if (next === 50) triggerAchievement('streak50', 'Untouchable Legend (50 Streak)')
+        else if (next === 25) triggerAchievement('streak25', 'Master of Focus (25 Streak)')
+        else if (next === 10) triggerAchievement('streak10', 'Unstoppable! (10 Streak)')
+
         if (next % 5 === 0) {
           setHearts((h) => Math.min(h + 1, 3))
         }
@@ -979,15 +1074,6 @@ function App() {
       setShakeIndex(index)
       playGameSound('incorrect', isMuted)
       setTimeout(() => setShakeIndex(null), 500)
-      const selectedOption = currentQuestion.options?.[index]
-      const errorLabel = selectedOption ? selectedOption : 'INCORRECT'
-
-      setMessageOverlay({
-        isOpen: true,
-        message: errorLabel,
-        type: 'incorrect'
-      })
-
       setCurrentStreak(0)
       setHearts((h) => {
         const next = h - 1
@@ -1055,11 +1141,27 @@ function App() {
     flagFallbackRef.current = true
   }
 
+  const handleUpdate = () => {
+    updateServiceWorker(true)
+  }
+
   const isMapTap = currentQuestion?.type === 'map_tap'
 
   return (
-    <div className="app">
+    <div className={`app ${mapShake ? 'animate-map-shake' : ''}`}>
       <div className="map" ref={mapContainerRef} />
+
+      {guidanceTip && <div className="guidance-tip animate-pop">{guidanceTip}</div>}
+
+      {scorePopups.map(popup => (
+        <div
+          key={popup.id}
+          className="score-popup"
+          style={{ left: popup.x, top: popup.y }}
+        >
+          {popup.value}
+        </div>
+      ))}
 
       {!isDataLoaded && (
         <div className="loader-screen">
@@ -1068,7 +1170,7 @@ function App() {
             <div className="loader-bar-container">
               <div
                 className="loader-bar"
-                style={{ width: `${loadingProgress}%` }}
+                style={{ width: `${loadingProgress}% ` }}
               />
             </div>
             <div className="loader-status">
@@ -1078,50 +1180,71 @@ function App() {
         </div>
       )}
 
-      <div className="utility-toggles">
+      <div className="utility-controls" ref={settingsRef}>
         <button
-          className="theme-toggle"
-          onClick={() => setIsMuted(m => !m)}
-          title={isMuted ? "Unmute" : "Mute"}
+          className={`settings-cog ${isSettingsOpen ? 'active' : ''} `}
+          onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+          title="Settings"
         >
-          {isMuted ? (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" />
-            </svg>
-          )}
-        </button>
-
-        <button
-          className="theme-toggle"
-          onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
-          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-        >
-          {theme === 'dark' ? (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="5" />
-              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-          )}
-        </button>
-
-        <button
-          className="theme-toggle"
-          onClick={() => setIsAtlasOpen(true)}
-          title="Open Atlas (Mastery Tracker)"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
+
+        {isSettingsOpen && (
+          <div className="settings-menu animate-pop">
+            <button
+              className="theme-toggle"
+              onClick={() => setIsMuted(m => !m)}
+              title={isMuted ? "Unmute" : "Mute"}
+            >
+              {isMuted ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" />
+                </svg>
+              )}
+              <span>{isMuted ? "Unmute Audio" : "Mute Audio"}</span>
+            </button>
+
+            <button
+              className="theme-toggle"
+              onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+            >
+              {theme === 'dark' ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="5" />
+                  <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              )}
+              <span>{theme === 'dark' ? "Light Mode" : "Dark Mode"}</span>
+            </button>
+
+            <button
+              className="theme-toggle"
+              onClick={() => {
+                setIsAtlasOpen(true)
+                setIsSettingsOpen(false)
+              }}
+              title="Open Atlas (Mastery Tracker)"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+              <span>Progress Atlas</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {notification && (
@@ -1137,10 +1260,18 @@ function App() {
       {isDataLoaded && (
         <>
           <div className="scoreboard">
-            <div className={`stat-group ${displayScore !== score ? 'animate-score-bump' : ''}`}>
+            <div className={`stat-group ${displayScore !== score ? 'animate-score-bump' : ''} `}>
               <div className="stat-label">Score</div>
-              <div className="stat-value">{formatScore(displayScore)}</div>
-              <div className="stat-sub">BEST: {formatScore(highScore)}</div>
+              <div className="stat-value text-gold" key={score}>
+                {formatScore(score)}
+                {comboTip.visible && (
+                  <div className="combo-popover animate-bounce">{comboTip.message}</div>
+                )}
+              </div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">HIGH SCORE</div>
+              <div className="stat-value text-dim">{formatScore(highScore)}</div>
             </div>
 
             <div className="divider" />
@@ -1160,7 +1291,7 @@ function App() {
 
             <div className="stat-group">
               <div className="stat-label">Progress</div>
-              <div className={`stat-value accent ${isLevelUp ? 'animate-pulse' : ''}`}>
+              <div className={`stat-value accent ${isLevelUp ? 'animate-pulse' : ''} `}>
                 L.{level}
               </div>
               <div className="stat-sub">{correctInLevel}/5 NEXT</div>
@@ -1186,6 +1317,7 @@ function App() {
                 </svg>
               ))}
             </div>
+
           </div>
           {!isOnline && (
             <div className="offline-banner">
@@ -1193,8 +1325,17 @@ function App() {
             </div>
           )}
 
+          {needRefresh && (
+            <div className="update-banner animate-slide-in">
+              <span>🚀 A new version of GeoTest is available!</span>
+              <button className="btn-update" onClick={handleUpdate}>
+                Update Now
+              </button>
+            </div>
+          )}
+
           {!gameOver && (
-            <section className={`quiz-panel ${isMapTap ? 'compact' : ''}`} aria-live="polite">
+            <section className={`quiz-panel ${isMapTap ? 'compact' : ''} `} aria-live="polite">
               {isMapTap ? (
                 <div className="compact-prompt">
                   <div className="compact-prompt-header">
@@ -1239,7 +1380,7 @@ function App() {
                     className="powerup-btn"
                     onClick={handleHint}
                     disabled={hintsLeft <= 0 || removedIndices.length > 0}
-                    title={`Spend Hint Charge (${hintsLeft} left). Removes 2 wrong answers`}
+                    title={`Spend Hint Charge(${hintsLeft} left).Removes 2 wrong answers`}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="12" cy="12" r="10" strokeDasharray="31.4" strokeDashoffset="15.7" />
@@ -1253,7 +1394,7 @@ function App() {
                   className="powerup-btn"
                   onClick={handleSkip}
                   disabled={skipsLeft <= 0}
-                  title={`Spend Skip Charge (${skipsLeft} left). Preserves streak`}
+                  title={`Spend Skip Charge(${skipsLeft} left).Preserves streak`}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="m6 17 5-5-5-5M13 17l5-5-5-5" />
@@ -1293,12 +1434,6 @@ function App() {
             </section>
           )}
 
-          {messageOverlay.isOpen && (
-            <div className={`incorrect-overlay ${messageOverlay.type}`}>
-              <div className="incorrect-overlay-text">{messageOverlay.message}</div>
-            </div>
-          )}
-
           {isAtlasOpen && (
             <div className="atlas-modal">
               <div className="atlas-header">
@@ -1320,7 +1455,7 @@ function App() {
                         const isMastered = mCount > 0
                         const progress = Math.min(100, (mCount / 3) * 100)
                         return (
-                          <div key={c.cca3} className={`atlas-item ${isMastered ? '' : 'unmastered'}`}>
+                          <div key={c.cca3} className={`atlas - item ${isMastered ? '' : 'unmastered'} `}>
                             {c.flagSvg || c.flagPng ? (
                               <img
                                 src={resolvePublicAsset(c.flagSvg || c.flagPng || undefined)}
@@ -1332,7 +1467,7 @@ function App() {
                             )}
                             <div className="atlas-item-name">{c.name}</div>
                             <div className="atlas-mastery-bar">
-                              <div className="atlas-mastery-fill" style={{ width: `${progress}%` }} />
+                              <div className="atlas-mastery-fill" style={{ width: `${progress}% ` }} />
                             </div>
                             {progress >= 100 && <div className="atlas-mastery-text">Mastered</div>}
                           </div>
@@ -1506,6 +1641,7 @@ function buildNextQuestion(args: {
   typeIndexRef: MutableRefObject<number>
   level: number
   idPrefix: string
+  completedQuestions: string[]
 }) {
   const allTypes: QuestionType[] = [
     'map_tap',
@@ -1570,9 +1706,9 @@ function buildNextQuestion(args: {
   for (let attempt = 0; attempt < types.length; attempt += 1) {
     const type = types[args.typeIndexRef.current % types.length]
     args.typeIndexRef.current += 1
-    const question = buildQuestionForType(type, args)
+    const question = buildQuestionForType(type, { ...args, completedQuestions: args.completedQuestions })
     if (question) {
-      question.id = `${args.idPrefix}-${question.id}`
+      question.id = `${args.idPrefix} -${question.id} `
       return question
     }
   }
@@ -1617,15 +1753,21 @@ function buildQuestionForType(
     featureIndex: Map<string, FeatureRecord>
     queueRef: MutableRefObject<Record<QuestionType, string[]>>
     level: number
+    completedQuestions: string[]
   },
 ) {
-  const country = getNextCountryForType(type, args)
+  const country = getNextCountryForType(type, {
+    pools: args.pools,
+    queueRef: args.queueRef,
+    level: args.level,
+    completedQuestions: args.completedQuestions
+  })
   if (!country || !country.cca3) return null
 
   if (type === 'map_tap') {
     const targetFeature = args.featureIndex.get(country.cca3) ?? undefined
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: country.name,
       continent: country.region,
@@ -1644,7 +1786,7 @@ function buildQuestionForType(
       country,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: 'Which country matches this flag?',
       options,
@@ -1668,7 +1810,7 @@ function buildQuestionForType(
       capital,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `Capital of ${country.name}?`,
       options,
@@ -1721,7 +1863,7 @@ function buildQuestionForType(
     const finalOptions = finalCandidates.map((item) => item.name)
     const optionCca3s = finalCandidates.map((item) => item.cca3)
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `Which country borders ${country.name}?`,
       options: finalOptions,
@@ -1743,9 +1885,9 @@ function buildQuestionForType(
       currencyCode,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
-      prompt: `Currency code for ${country.name}?`,
+      prompt: `Currency code for ${country.name} ? `,
       options,
       correctIndex,
       targetCca3: country.cca3,
@@ -1764,7 +1906,7 @@ function buildQuestionForType(
       city,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `Which city is in ${country.name}?`,
       options,
@@ -1785,7 +1927,7 @@ function buildQuestionForType(
       river,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `River in ${country.name}?`,
       options,
@@ -1806,7 +1948,7 @@ function buildQuestionForType(
       language,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `Language of ${country.name}?`,
       options,
@@ -1818,9 +1960,9 @@ function buildQuestionForType(
 
   if (type === 'landlocked_mcq') {
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
-      prompt: `Is ${country.name} landlocked or coastal?`,
+      prompt: `Is ${country.name} landlocked or coastal ? `,
       options: ['Landlocked', 'Coastal'],
       correctIndex: country.landlocked ? 0 : 1,
       targetCca3: country.cca3,
@@ -1839,7 +1981,7 @@ function buildQuestionForType(
       peakName,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `Highest peak in ${country.name}?`,
       options,
@@ -1860,7 +2002,7 @@ function buildQuestionForType(
       rangeName,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `Which mountain range is in ${country.name}?`,
       options,
@@ -1881,7 +2023,7 @@ function buildQuestionForType(
       regionName,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `Which physical region is in ${country.name}?`,
       options,
@@ -1896,7 +2038,7 @@ function buildQuestionForType(
     const pair = pickMetricPair(slicedPool, 'population')
     if (!pair) return null
     return {
-      id: `${type}-${pair.a.cca3}-${pair.b.cca3}`,
+      id: `${type} -${pair.a.cca3} -${pair.b.cca3} `,
       type,
       prompt: 'Which is more populous?',
       options: [pair.a.name, pair.b.name],
@@ -1911,7 +2053,7 @@ function buildQuestionForType(
     const pair = pickMetricPair(slicedPool, 'area')
     if (!pair) return null
     return {
-      id: `${type}-${pair.a.cca3}-${pair.b.cca3}`,
+      id: `${type} -${pair.a.cca3} -${pair.b.cca3} `,
       type,
       prompt: 'Which is larger by area?',
       options: [pair.a.name, pair.b.name],
@@ -1934,7 +2076,7 @@ function buildQuestionForType(
 
     const finalCandidates = shuffle([country, ...sameSub, correctOutlier])
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `Which country does NOT belong in ${subregion}?`,
       options: finalCandidates.map(c => c.name),
@@ -1950,7 +2092,7 @@ function buildQuestionForType(
     const finalOptions = shuffle([count, ...distractors.slice(0, 3)])
 
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `How many countries share a land border with ${country.name}?`,
       options: finalOptions.map(String),
@@ -1975,9 +2117,9 @@ function buildQuestionForType(
     const finalOptions = shuffle(options)
 
     return {
-      id: `${type}-${triplet.map(c => c.cca3).join('-')}`,
+      id: `${type} -${triplet.map(c => c.cca3).join('-')} `,
       type,
-      prompt: `Which is the correct order from MOST to LEAST populous?`,
+      prompt: `Which is the correct order from MOST to LEAST populous ? `,
       options: finalOptions,
       correctIndex: finalOptions.indexOf(options[0]),
       displayCca3s: triplet.map(c => c.cca3).filter(Boolean) as string[],
@@ -1996,9 +2138,9 @@ function buildQuestionForType(
     const correctIndex = tiers.findIndex((tier) => rank <= tier.max)
     if (correctIndex < 0) return null
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
-      prompt: `Which population tier is ${country.name} in?`,
+      prompt: `Which population tier is ${country.name} in? `,
       options: tiers.map((tier) => tier.label),
       correctIndex,
       targetCca3: country.cca3,
@@ -2015,7 +2157,7 @@ function buildQuestionForType(
     const second = flip ? pair.a : pair.b
     const isMore = (first.population ?? 0) > (second.population ?? 0)
     return {
-      id: `${type}-${first.cca3}-${second.cca3}`,
+      id: `${type} -${first.cca3} -${second.cca3} `,
       type,
       prompt: `Is ${first.name} more populous than ${second.name}?`,
       options: ['Yes', 'No'],
@@ -2037,9 +2179,9 @@ function buildQuestionForType(
     const correctIndex = tiers.findIndex((tier) => rank <= tier.max)
     if (correctIndex < 0) return null
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
-      prompt: `Which GDP tier is ${country.name} in?`,
+      prompt: `Which GDP tier is ${country.name} in? `,
       options: tiers.map((tier) => tier.label),
       correctIndex,
       targetCca3: country.cca3,
@@ -2056,9 +2198,9 @@ function buildQuestionForType(
       exportLabel,
     )
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
-      prompt: `Top export category for ${country.name}?`,
+      prompt: `Top export category for ${country.name} ? `,
       options,
       correctIndex,
       targetCca3: country.cca3,
@@ -2072,7 +2214,7 @@ function buildQuestionForType(
     const sitePool = args.pools.unescoPool.flatMap((item) => item.unescoSites ?? [])
     const { options, correctIndex } = buildOptionSetFromValues(sitePool, siteName)
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
       prompt: `Which UNESCO World Heritage site is in ${country.name}?`,
       options,
@@ -2092,9 +2234,9 @@ function buildQuestionForType(
       country,
     )
     return {
-      id: `${type}-${country.cca3}-${landmark.id}`,
+      id: `${type} -${country.cca3} -${landmark.id} `,
       type,
-      prompt: `Which country is shown in this landmark photo?`,
+      prompt: `Which country is shown in this landmark photo ? `,
       options,
       correctIndex,
       optionCca3s,
@@ -2108,9 +2250,9 @@ function buildQuestionForType(
     const slicedPool = getPoolForLevel(args.pools.mapPool, args.level)
     const { options, correctIndex, optionCca3s } = buildOptionSetForCountries(slicedPool, country)
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
-      prompt: `Identify this country by its shape:`,
+      prompt: `Identify this country by its shape: `,
       options: options,
       correctIndex,
       optionCca3s,
@@ -2126,9 +2268,9 @@ function buildQuestionForType(
     const slicedPool = getPoolForLevel(args.pools.countries, args.level)
     const { options, correctIndex } = buildOptionSetForCountries(slicedPool, country)
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
-      prompt: `Which island or coastline is shown here?`,
+      prompt: `Which island or coastline is shown here ? `,
       options,
       correctIndex,
       targetCca3: country.cca3,
@@ -2143,9 +2285,9 @@ function buildQuestionForType(
       'RUS', 'NLD', 'LUX', 'BUL', 'IRL', 'HUN', 'SLE', 'GAB', 'TCD', 'MLI', 'GIN', 'CIV'
     ].includes(country.cca3 ?? '')
     return {
-      id: `${type}-${country.cca3}`,
+      id: `${type} -${country.cca3} `,
       type,
-      prompt: `Does the flag of ${country.name} have at least THREE distinct colors?`,
+      prompt: `Does the flag of ${country.name} have at least THREE distinct colors ? `,
       options: ['Yes', 'No'],
       correctIndex: hasThree ? 0 : 1,
       targetCca3: country.cca3,
@@ -2182,6 +2324,7 @@ function getNextCountryForType(
     }
     queueRef: MutableRefObject<Record<QuestionType, string[]>>
     level: number
+    completedQuestions: string[]
   },
 ) {
   const pool =
@@ -2228,7 +2371,17 @@ function getNextCountryForType(
   if (!pool.length) return null
 
   // Slice pool based on level
-  const currentPool = getPoolForLevel(pool, args.level)
+  const basePool = getPoolForLevel(pool, args.level)
+
+  // Filter out completed questions for this specific type
+  let currentPool = basePool.filter(c => !args.completedQuestions.includes(`${type}-${c.cca3}`))
+
+  // If we've exhausted everything in this level's pool for this type, 
+  // we have no choice but to recycle (or pull from all countries if user wants infinity).
+  // But for now, we recycle the oldest ones by clearing the history for this type-pool combo.
+  if (currentPool.length === 0) {
+    currentPool = basePool
+  }
 
   const queue = args.queueRef.current[type]
   if (queue.length === 0) {
@@ -2376,7 +2529,7 @@ function shuffle<T>(items: T[]) {
 function formatTime(totalSeconds: number) {
   const m = Math.floor(totalSeconds / 60)
   const s = totalSeconds % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
+  return `${m}:${s.toString().padStart(2, '0')} `
 }
 
 function formatScore(n: number) {
@@ -2422,11 +2575,12 @@ function getPointsForQuestion(type: QuestionType): number {
   }
 }
 
+
 function resolvePublicAsset(path: string | null | undefined): string | undefined {
   if (!path) return undefined
   if (!path.startsWith('/')) return path
   const baseUrl = import.meta.env.BASE_URL || '/'
-  return `${baseUrl}${path.slice(1)}`
+  return `${baseUrl}${path.slice(1)} `
 }
 
 function computeBBox(geometry: GeoFeature['geometry']): [number, number, number, number] {

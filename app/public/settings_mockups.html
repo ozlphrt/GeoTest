@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoTest Settings Cog Mockups</title>
+    <style>
+        :root {
+            --bg: #0b0f14;
+            --glass: rgba(255, 255, 255, 0.05);
+            --border: rgba(255, 255, 255, 0.1);
+            --accent: #3b82f6;
+            --text: #ffffff;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            gap: 40px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 1000px;
+            padding: 20px;
+        }
+
+        .mockup-item {
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .mockup-item:hover {
+            border-color: var(--accent);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.6;
+        }
+
+        /* Common Button Base */
+        .btn-base {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+        }
+
+        /* 1. Minimalist Orb */
+        .orb-btn {
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.1), transparent);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .orb-btn:hover {
+            transform: rotate(45deg) scale(1.1);
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.3);
+            border-color: var(--accent);
+        }
+
+        /* 2. Glassmorphic Square (Rounded) */
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .glass-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 12px;
+            padding: 1px;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+        }
+
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        /* 3. Neon Circuit */
+        .neon-btn {
+            background: transparent;
+            border: 2px solid var(--accent);
+            border-radius: 8px;
+            box-shadow: 0 0 10px var(--accent), inset 0 0 5px var(--accent);
+            animation: neonPulse 2s infinite alternate;
+        }
+
+        @keyframes neonPulse {
+            from {
+                opacity: 0.8;
+                box-shadow: 0 0 5px var(--accent);
+            }
+
+            to {
+                opacity: 1;
+                box-shadow: 0 0 15px var(--accent), inset 0 0 10px var(--accent);
+            }
+        }
+
+        .neon-btn:hover {
+            background: var(--accent);
+            color: black;
+        }
+
+        /* 4. Abstract Dots (Pill) */
+        .pill-btn {
+            width: 30px;
+            height: 60px;
+            background: var(--glass);
+            border-radius: 30px;
+            border: 1px solid var(--border);
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .dot {
+            width: 4px;
+            height: 4px;
+            background: white;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+
+        .pill-btn:hover .dot {
+            height: 12px;
+            background: var(--accent);
+        }
+
+        /* 5. Tactile Floating */
+        .tactile-btn {
+            background: #1a1f26;
+            border-radius: 16px;
+            box-shadow:
+                6px 6px 12px #070a0d,
+                -6px -6px 12px #2d343f;
+            transition: all 0.2s ease;
+        }
+
+        .tactile-btn:active {
+            box-shadow:
+                inset 4px 4px 8px #070a0d,
+                inset -4px -4px 8px #2d343f;
+            transform: scale(0.98);
+        }
+
+        svg {
+            width: 24px;
+            height: 24px;
+            transition: transform 0.3s ease;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Settings Cog Design Mockups</h1>
+    <div class="container">
+        <!-- 1 -->
+        <div class="mockup-item">
+            <div class="btn-base orb-btn">
+                <svg fill="currentColor" viewBox="0 0 24 24">
+                    <path
+                        d="M12 15c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3m0-8c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5m0-2c.46 0 .91.05 1.34.15l1.09-1.54C13.78 1.23 12.91 1 12 1c-6.08 0-11 4.92-11 11s4.92 11 11 11 11-4.92 11-11c0-1.85-.46-3.59-1.26-5.12l-1.83.61c.67 1.3 1.09 2.76 1.09 4.51 0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9z" />
+                </svg>
+            </div>
+            <div class="label">Minimalist Orb</div>
+        </div>
+
+        <!-- 2 -->
+        <div class="mockup-item">
+            <div class="btn-base glass-btn">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+            </div>
+            <div class="label">Advanced Glass</div>
+        </div>
+
+        <!-- 3 -->
+        <div class="mockup-item">
+            <div class="btn-base neon-btn">
+                <svg fill="currentColor" viewBox="0 0 24 24">
+                    <path
+                        d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+                </svg>
+            </div>
+            <div class="label">Neon Pulse</div>
+        </div>
+
+        <!-- 4 -->
+        <div class="mockup-item">
+            <div class="btn-base pill-btn">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+            <div class="label">Modern Pill</div>
+        </div>
+
+        <!-- 5 -->
+        <div class="mockup-item">
+            <div class="btn-base tactile-btn">
+                <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </div>
+            <div class="label">Tactile Core</div>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['icons/192.png', 'icons/512.png', 'vite.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,

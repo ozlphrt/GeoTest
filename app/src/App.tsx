@@ -135,6 +135,7 @@ function App() {
   const focusedIdsRef = useRef<string[]>([])
   const nextTimeoutRef = useRef<number | null>(null)
   const settingsRef = useRef<HTMLDivElement | null>(null)
+  const processingRef = useRef(false)
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   )
@@ -409,7 +410,7 @@ function App() {
       featureIndex,
       queueRef,
       typeIndexRef,
-      level: 1,
+      level,
       idPrefix: `reset - ${Date.now()} `,
       completedQuestions,
     })
@@ -470,6 +471,13 @@ function App() {
         if (data.mastery) setMastery(data.mastery)
         if (Array.isArray(data.achievements)) setAchievements(data.achievements)
         if (Array.isArray(data.completedQuestions)) setCompletedQuestions(data.completedQuestions)
+
+        if (typeof data.levelStartScore === 'number') {
+          setLevelStartScore(data.levelStartScore)
+        } else if (typeof data.score === 'number') {
+          // Migration: If no level start score saved, assume current score is the floor
+          setLevelStartScore(data.score)
+        }
       } catch (e) {
         console.error('Failed to load progress', e)
       }
@@ -492,10 +500,11 @@ function App() {
       isMuted,
       mastery,
       achievements,
-      completedQuestions
+      completedQuestions,
+      levelStartScore
     }))
     document.body.classList.toggle('light-mode', theme === 'light')
-  }, [score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements, completedQuestions])
+  }, [score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements, completedQuestions, levelStartScore])
 
   useEffect(() => {
     if (!notification) return
@@ -783,6 +792,7 @@ function App() {
     setSelectedIndex(null)
     flagFallbackRef.current = false
     setRemovedIndices([])
+    processingRef.current = false
   }, [currentQuestion?.id])
 
   useEffect(() => {
@@ -790,7 +800,9 @@ function App() {
     if (!map || !mapLoaded || !currentQuestion) return
 
     const handleMapTap = (event: maplibregl.MapMouseEvent) => {
+      if (processingRef.current) return
       if (currentQuestion.type !== 'map_tap' || !currentQuestion.targetFeature) return
+      processingRef.current = true
       const { lng, lat } = event.lngLat
       // MapLibre reports WGS84 lon/lat (world -> geographic).
       const clickBounds: [maplibregl.PointLike, maplibregl.PointLike] = [
@@ -1001,7 +1013,9 @@ function App() {
   }, [countryPools, featureIndex, currentQuestion, handleNext])
 
   const handleOptionSelect = (index: number, event: React.MouseEvent<HTMLButtonElement>) => {
+    if (processingRef.current) return
     if (!currentQuestion || currentQuestion.correctIndex === undefined) return
+    processingRef.current = true
     event.currentTarget.blur()
     setSelectedIndex(index)
     const isCorrect = index === currentQuestion.correctIndex

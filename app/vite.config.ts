@@ -50,4 +50,12 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        tv: 'index_tv.html',
+      },
+    },
+  },
 })

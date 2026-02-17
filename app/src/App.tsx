@@ -40,6 +40,8 @@ type QuestionType =
   | 'population_more_than'
   | 'gdp_tier'
   | 'economy_exports_mcq'
+  | 'journey_puzzle'
+  | 'region_builder'
 
 type CountryMeta = {
   cca2: string | null
@@ -112,6 +114,9 @@ type Question = {
   displayCca3s?: string[]
   continent?: string
   hideLabels?: boolean
+  journeyPath?: string[] // For journey_puzzle: [start, ...intermediate, end]
+  selectedCountries?: string[] // For region_builder: selected country CCA3s
+  correctCountries?: string[] // For region_builder: correct country CCA3s
 }
 
 type LandmarkEntry = {
@@ -152,6 +157,7 @@ function App() {
   const [hearts, setHearts] = useState(3)
   const [gameOver, setGameOver] = useState(false)
   const [removedIndices, setRemovedIndices] = useState<number[]>([])
+  const [showShimmer, setShowShimmer] = useState(false)
   const [hintsLeft, setHintsLeft] = useState(3)
   const [skipsLeft, setSkipsLeft] = useState(3)
   const [sessionSeconds, setSessionSeconds] = useState(0)
@@ -163,6 +169,8 @@ function App() {
   const [isLevelUp, setIsLevelUp] = useState(false)
   const [mastery, setMastery] = useState<Record<string, number>>({})
   const [completedQuestions, setCompletedQuestions] = useState<string[]>([])
+  const [performanceStats, setPerformanceStats] = useState<Record<QuestionType, { correct: number; total: number; totalResponseTime: number }>>({} as Record<QuestionType, { correct: number; total: number; totalResponseTime: number }>)
+  const questionStartTimeRef = useRef<number>(0)
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
@@ -177,6 +185,9 @@ function App() {
   const [guidanceTip, setGuidanceTip] = useState<string | null>(null)
   const [scorePopups, setScorePopups] = useState<{ id: string; x: number; y: number; value: string }[]>([])
   const [mapShake, setMapShake] = useState(false)
+  const [lastCorrectCca3, setLastCorrectCca3] = useState<string | null>(null)
+  const rotationTimeoutRef = useRef<number | null>(null)
+  const [atlasTab, setAtlasTab] = useState<'atlas' | 'stats'>('atlas')
 
   const countryPools = useMemo(() => {
     const countries = countriesData as CountryMeta[]
@@ -351,9 +362,12 @@ function App() {
       level,
       idPrefix: `${Date.now()} -${Math.random().toString(36).substring(7)} `,
       completedQuestions,
+      performanceStats,
     })
     setCurrentQuestion(question)
-  }, [countryPools, featureIndex, level, completedQuestions])
+    // Track question start time for response time calculation
+    questionStartTimeRef.current = Date.now()
+  }, [countryPools, featureIndex, level, completedQuestions, performanceStats])
 
   const queueRef = useRef<Record<QuestionType, string[]>>({
     map_tap: [],
@@ -382,6 +396,8 @@ function App() {
     population_more_than: [],
     gdp_tier: [],
     economy_exports_mcq: [],
+    journey_puzzle: [],
+    region_builder: [],
   })
   const typeIndexRef = useRef(0)
 
@@ -473,6 +489,18 @@ function App() {
         if (data.mastery) setMastery(data.mastery)
         if (Array.isArray(data.achievements)) setAchievements(data.achievements)
         if (Array.isArray(data.completedQuestions)) setCompletedQuestions(data.completedQuestions)
+        if (data.performanceStats) {
+          // Migrate old performanceStats format (without totalResponseTime)
+          const migratedStats: Record<QuestionType, { correct: number; total: number; totalResponseTime: number }> = {} as any
+          for (const [type, stat] of Object.entries(data.performanceStats)) {
+            migratedStats[type as QuestionType] = {
+              correct: stat.correct || 0,
+              total: stat.total || 0,
+              totalResponseTime: stat.totalResponseTime || 0
+            }
+          }
+          setPerformanceStats(migratedStats)
+        }
 
         if (typeof data.levelStartScore === 'number') {
           setLevelStartScore(data.levelStartScore)
@@ -505,10 +533,11 @@ function App() {
       mastery,
       achievements,
       completedQuestions,
-      levelStartScore
+      levelStartScore,
+      performanceStats
     }))
     document.body.classList.toggle('light-mode', theme === 'light')
-  }, [score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements, completedQuestions, levelStartScore, isProgressLoaded])
+  }, [score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements, completedQuestions, levelStartScore, performanceStats, isProgressLoaded])
 
   useEffect(() => {
     if (!notification) return
@@ -929,7 +958,20 @@ function App() {
   useEffect(() => {
     if (!currentQuestion) return
     const map = mapRef.current
-    if (!map || !mapLoaded || !currentQuestion.targetFeature) return
+    if (!map || !mapLoaded) return
+
+    // Skip camera movement for journey_puzzle and region_builder (handled separately)
+    if (currentQuestion.type === 'journey_puzzle' || currentQuestion.type === 'region_builder') {
+      return
+    }
+
+    if (!currentQuestion.targetFeature) return
+
+    // Clear any pending rotation
+    if (rotationTimeoutRef.current) {
+      window.clearTimeout(rotationTimeoutRef.current)
+      rotationTimeoutRef.current = null
+    }
 
     const isMapTap = currentQuestion.type === 'map_tap'
     const isCoastline = currentQuestion.type === 'coastline_mcq'
@@ -937,17 +979,48 @@ function App() {
 
     const center = bboxCenter(currentQuestion.targetFeature.bbox)
     const randomBearing = (Math.random() - 0.5) * 20 // ±10 deg
-    const dynamicPitch = currentQuestion.type === 'coastline_mcq' ? 0 : 35 + Math.random() * 25 // 35-60 deg
+    
+    // Get country for contextual pitch
+    const targetCca3 = currentQuestion.targetCca3
+    const country = targetCca3 ? countryPools.countriesByCca3.get(targetCca3) : null
+    const countryType = getCountryType(country)
+    
+    // Contextual pitch based on country type
+    let dynamicPitch: number
+    if (isCoastline) {
+      dynamicPitch = 0
+    } else {
+      switch (countryType) {
+        case 'island':
+          dynamicPitch = 20 + Math.random() * 15 // 20-35° for islands (lower to show coastline)
+          break
+        case 'mountainous':
+          dynamicPitch = 60 + Math.random() * 20 // 60-80° for mountains (higher to emphasize terrain)
+          break
+        case 'large':
+          zoom = Math.max(zoom - 0.3, 0.5) // Wider zoom for large countries
+          dynamicPitch = 30 + Math.random() * 20 // 30-50°
+          break
+        case 'small':
+          zoom = Math.min(zoom + 0.2, 3.0) // Tighter zoom for small countries
+          dynamicPitch = 40 + Math.random() * 20 // 40-60°
+          break
+        default:
+          dynamicPitch = 35 + Math.random() * 25 // 35-60° standard
+      }
+    }
 
+    // Cinematic flyTo with custom easing
     map.flyTo({
       center,
       zoom,
-      duration: 1800,
+      duration: 2000, // Slightly longer for smoother motion
       pitch: dynamicPitch,
       bearing: randomBearing,
+      easing: easeOutQuart, // Custom easing for smooth deceleration
       essential: true
     })
-  }, [currentQuestion, mapLoaded])
+  }, [currentQuestion, mapLoaded, countryPools.countriesByCca3])
 
   useEffect(() => {
     const map = mapRef.current
@@ -960,6 +1033,54 @@ function App() {
     focusedIdsRef.current = []
 
     if (currentQuestion.type === 'map_tap') return
+
+    // Handle journey_puzzle: show path
+    if (currentQuestion.type === 'journey_puzzle' && currentQuestion.journeyPath) {
+      const pathCca3s = currentQuestion.journeyPath.filter(Boolean)
+      for (const cca3 of pathCca3s) {
+        map.setFeatureState({ source: 'countries', id: cca3 }, { focus: true })
+        focusedIdsRef.current.push(cca3)
+      }
+      
+      const bboxes = pathCca3s
+        .map((cca3) => featureIndex.get(cca3)?.bbox)
+        .filter(Boolean) as [number, number, number, number][]
+      if (bboxes.length > 0) {
+        const merged = bboxes.reduce(mergeBBoxes)
+        map.fitBounds(
+          [
+            [merged[0], merged[1]],
+            [merged[2], merged[3]],
+          ],
+          { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
+        )
+      }
+      return
+    }
+
+    // Handle region_builder: show correct countries
+    if (currentQuestion.type === 'region_builder' && currentQuestion.displayCca3s) {
+      const displayCca3s = currentQuestion.displayCca3s.filter(Boolean)
+      for (const cca3 of displayCca3s) {
+        map.setFeatureState({ source: 'countries', id: cca3 }, { focus: true })
+        focusedIdsRef.current.push(cca3)
+      }
+      
+      const bboxes = displayCca3s
+        .map((cca3) => featureIndex.get(cca3)?.bbox)
+        .filter(Boolean) as [number, number, number, number][]
+      if (bboxes.length > 0) {
+        const merged = bboxes.reduce(mergeBBoxes)
+        map.fitBounds(
+          [
+            [merged[0], merged[1]],
+            [merged[2], merged[3]],
+          ],
+          { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
+        )
+      }
+      return
+    }
 
     const displayCca3s = (currentQuestion.displayCca3s ?? []).filter(Boolean)
     if (!displayCca3s.length) return
@@ -982,7 +1103,7 @@ function App() {
 
       { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
     )
-  }, [currentQuestion?.id, featureIndex])
+  }, [currentQuestion?.id, featureIndex, currentQuestion?.journeyPath, currentQuestion?.selectedCountries])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1027,11 +1148,53 @@ function App() {
     handleNext()
   }, [countryPools, featureIndex, currentQuestion, handleNext])
 
-  const handleOptionSelect = (index: number, event: React.MouseEvent<HTMLButtonElement>) => {
+  // Trigger shimmer animation 1 second after new question appears
+  useEffect(() => {
+    if (!currentQuestion) {
+      setShowShimmer(false)
+      return
+    }
+    
+    setShowShimmer(false) // Reset shimmer state
+    const timer = setTimeout(() => {
+      setShowShimmer(true)
+      // Remove shimmer-active after animation completes (1.5s)
+      setTimeout(() => {
+        setShowShimmer(false)
+      }, 1500)
+    }, 1000) // 1 second delay
+    
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [currentQuestion?.id]) // Trigger when question ID changes
+
+  const handleOptionSelect = (index: number, event?: React.MouseEvent<HTMLButtonElement>) => {
     if (processingRef.current) return
-    if (!currentQuestion || currentQuestion.correctIndex === undefined) return
+    if (!currentQuestion) return
+    
+    // Handle region_builder (multi-select)
+    if (currentQuestion.type === 'region_builder') {
+      const selectedCca3 = currentQuestion.optionCca3s?.[index]
+      if (!selectedCca3) return
+      
+      const currentSelected = currentQuestion.selectedCountries || []
+      const isSelected = currentSelected.includes(selectedCca3)
+      
+      const newSelected = isSelected
+        ? currentSelected.filter(c => c !== selectedCca3)
+        : [...currentSelected, selectedCca3]
+      
+      setCurrentQuestion({
+        ...currentQuestion,
+        selectedCountries: newSelected
+      })
+      return // Don't process answer yet, wait for submit
+    }
+    
+    if (currentQuestion.correctIndex === undefined) return
+    if (event) event.currentTarget?.blur()
     processingRef.current = true
-    event.currentTarget.blur()
     setSelectedIndex(index)
     const isCorrect = index === currentQuestion.correctIndex
     const correctCca3 =
@@ -1041,6 +1204,7 @@ function App() {
 
     if (isCorrect) {
       if (correctCca3) {
+        setLastCorrectCca3(correctCca3)
         setMastery((prev) => {
           const nextVal = (prev[correctCca3] ?? 0) + 1
           const next = { ...prev, [correctCca3]: nextVal }
@@ -1053,8 +1217,38 @@ function App() {
 
           return next
         })
+        
+        // Post-answer rotation: rotate around the country after correct answer
+        const map = mapRef.current
+        if (map && currentQuestion.targetFeature) {
+          // Wait for flash animation to complete, then rotate
+          rotationTimeoutRef.current = window.setTimeout(() => {
+            const currentBearing = map.getBearing()
+            map.rotateTo({
+              bearing: currentBearing + 360,
+              duration: 6000, // 6 second rotation
+              easing: (t) => t // Linear rotation
+            })
+            rotationTimeoutRef.current = null
+          }, 1000) // Start rotation 1 second after answer
+        }
       }
       setCompletedQuestions(prev => [...prev, `${currentQuestion.type}-${correctCca3}`])
+      
+      // Update performance stats with response time
+      const responseTime = questionStartTimeRef.current > 0 ? Date.now() - questionStartTimeRef.current : 0
+      setPerformanceStats(prev => {
+        const current = prev[currentQuestion.type] || { correct: 0, total: 0, totalResponseTime: 0 }
+        return {
+          ...prev,
+          [currentQuestion.type]: {
+            correct: current.correct + 1,
+            total: current.total + 1,
+            totalResponseTime: current.totalResponseTime + responseTime
+          }
+        }
+      })
+      
       playGameSound('correct', isMuted)
       const basePoints = getPointsForQuestion(currentQuestion.type)
       const points = Math.round(basePoints * (1 + currentStreak * 0.1) * (1 + (level - 1) * 0.2))
@@ -1127,6 +1321,20 @@ function App() {
         return next
       })
     } else {
+      // Update performance stats for incorrect answer with response time
+      const responseTime = questionStartTimeRef.current > 0 ? Date.now() - questionStartTimeRef.current : 0
+      setPerformanceStats(prev => {
+        const current = prev[currentQuestion.type] || { correct: 0, total: 0, totalResponseTime: 0 }
+        return {
+          ...prev,
+          [currentQuestion.type]: {
+            correct: current.correct,
+            total: current.total + 1,
+            totalResponseTime: current.totalResponseTime + responseTime
+          }
+        }
+      })
+      
       setCorrectInLevel(0)
       setShakeIndex(index)
       playGameSound('incorrect', isMuted)
@@ -1142,7 +1350,40 @@ function App() {
     }
 
     const selectedCca3 = currentQuestion.optionCca3s?.[index]
-    if (correctCca3 && mapRef.current) {
+    
+    // Handle journey_puzzle: flash the path
+    if (currentQuestion.type === 'journey_puzzle' && mapRef.current && currentQuestion.journeyPath) {
+      const pathCca3s = currentQuestion.journeyPath.filter(Boolean)
+      if (isCorrect) {
+        // Flash entire path green
+        pathCca3s.forEach(cca3 => {
+          mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: 'correct' })
+        })
+        setTimeout(() => {
+          pathCca3s.forEach(cca3 => {
+            mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: null })
+          })
+        }, 1500)
+      } else {
+        // Flash selected incorrect, then show correct path
+        if (selectedCca3) {
+          mapRef.current.setFeatureState({ source: 'countries', id: selectedCca3 }, { flash: 'incorrect' })
+        }
+        setTimeout(() => {
+          if (selectedCca3) {
+            mapRef.current?.setFeatureState({ source: 'countries', id: selectedCca3 }, { flash: null })
+          }
+          pathCca3s.forEach(cca3 => {
+            mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: 'correct' })
+          })
+          setTimeout(() => {
+            pathCca3s.forEach(cca3 => {
+              mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: null })
+            })
+          }, 1500)
+        }, 500)
+      }
+    } else if (correctCca3 && mapRef.current) {
       flashCountrySelection(mapRef.current, {
         clickedCca3: selectedCca3 ?? undefined,
         correctCca3,
@@ -1187,6 +1428,116 @@ function App() {
     setSkipsLeft((prev) => prev - 1)
     playGameSound('powerup', isMuted)
     handleNext()
+  }
+
+  const handleRegionBuilderSubmit = () => {
+    if (!currentQuestion || currentQuestion.type !== 'region_builder') return
+    if (processingRef.current) return
+    
+    const selected = currentQuestion.selectedCountries || []
+    const correct = currentQuestion.correctCountries || []
+    
+    // Check if all correct are selected and no incorrect ones
+    const selectedSet = new Set(selected)
+    const correctSet = new Set(correct)
+    const allCorrectSelected = correct.every(c => selectedSet.has(c))
+    const noIncorrectSelected = selected.every(s => correctSet.has(s))
+    const isCorrect = allCorrectSelected && noIncorrectSelected && selected.length === correct.length
+    
+    processingRef.current = true
+    
+    // Process answer similar to regular questions
+    if (isCorrect) {
+      // Award mastery for all correct countries
+      correct.forEach(cca3 => {
+        if (cca3) {
+          setMastery((prev) => {
+            const nextVal = (prev[cca3] ?? 0) + 1
+            return { ...prev, [cca3]: nextVal }
+          })
+        }
+      })
+      
+      setCompletedQuestions(prev => [...prev, `${currentQuestion.type}-${correct.join(',')}`])
+      
+      const responseTime = questionStartTimeRef.current > 0 ? Date.now() - questionStartTimeRef.current : 0
+      setPerformanceStats(prev => {
+        const current = prev[currentQuestion.type] || { correct: 0, total: 0, totalResponseTime: 0 }
+        return {
+          ...prev,
+          [currentQuestion.type]: {
+            correct: current.correct + 1,
+            total: current.total + 1,
+            totalResponseTime: current.totalResponseTime + responseTime
+          }
+        }
+      })
+      
+      playGameSound('correct', isMuted)
+      const basePoints = getPointsForQuestion(currentQuestion.type)
+      const points = Math.round(basePoints * (1 + currentStreak * 0.1) * (1 + (level - 1) * 0.2))
+      setScore((s) => s + points)
+      
+      // Flash correct countries
+      if (mapRef.current && correct.length > 0) {
+        correct.forEach(cca3 => {
+          if (cca3) {
+            mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: 'correct' })
+          }
+        })
+        setTimeout(() => {
+          correct.forEach(cca3 => {
+            if (cca3) {
+              mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: null })
+            }
+          })
+        }, 1000)
+      }
+      
+      nextTimeoutRef.current = window.setTimeout(() => {
+        handleNext()
+        nextTimeoutRef.current = null
+      }, 1500)
+    } else {
+      playGameSound('incorrect', isMuted)
+      setCurrentStreak(0)
+      setHearts((h) => {
+        const next = h - 1
+        if (next <= 0) {
+          setGameOver(true)
+        }
+        return next
+      })
+      
+      // Flash incorrect selections
+      if (mapRef.current) {
+        selected.forEach(cca3 => {
+          if (cca3 && !correct.includes(cca3)) {
+            mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: 'incorrect' })
+          }
+        })
+        correct.forEach(cca3 => {
+          if (cca3) {
+            mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: 'correct' })
+          }
+        })
+        setTimeout(() => {
+          selected.forEach(cca3 => {
+            if (cca3) mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: null })
+          })
+          correct.forEach(cca3 => {
+            if (cca3) mapRef.current?.setFeatureState({ source: 'countries', id: cca3 }, { flash: null })
+          })
+        }, 2000)
+      }
+      
+      nextTimeoutRef.current = window.setTimeout(() => {
+        handleNext()
+        nextTimeoutRef.current = null
+      }, 3000)
+    }
+    
+    processingRef.current = false
   }
   const flagSrc = resolvePublicAsset(
     currentQuestion?.flagSvg && !flagFallbackRef.current
@@ -1320,8 +1671,8 @@ function App() {
       </div>
 
       {notification && (
-        <div className="achievement-toast animate-pop-centered">
-          <div className="achievement-icon">🏆</div>
+        <div className="achievement-toast animate-pop-centered animate-rotate-in shimmer-active">
+          <div className="achievement-icon animate-scale-in">🏆</div>
           <div className="achievement-text">
             <div className="achievement-status">Achievement Unlocked!</div>
             <div className="achievement-title">{notification.title}</div>
@@ -1331,7 +1682,7 @@ function App() {
 
       {isDataLoaded && (
         <>
-          <div className="scoreboard">
+          <div className={`scoreboard shimmer ${isLevelUp ? 'shimmer-active' : ''}`}>
             <div className={`stat-group ${displayScore !== score ? 'animate-score-bump' : ''} `}>
               <div className="stat-label">Score</div>
               <div className="stat-value text-gold" key={score}>
@@ -1359,7 +1710,7 @@ function App() {
 
             <div className="stat-group">
               <div className="circular-container">
-                <svg className="circular-progress">
+                <svg className="circular-progress" viewBox="0 0 44 44">
                   <circle className="circular-bg" cx="22" cy="22" r="18" />
                   <circle
                     className={`circular-value ${isLevelUp ? 'animate-pulse' : ''} `}
@@ -1368,8 +1719,21 @@ function App() {
                     strokeDashoffset={113.1 * (1 - correctInLevel / 5)}
                   />
                 </svg>
-                <div className="circular-text">
-                  L.{level}
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, calc(-50% + 0.05em))',
+                  fontSize: '0.9rem',
+                  fontWeight: '900',
+                  color: 'var(--text-main)',
+                  lineHeight: '1',
+                  margin: 0,
+                  padding: 0,
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {level}
                 </div>
               </div>
             </div>
@@ -1377,22 +1741,25 @@ function App() {
             <div className="divider" />
 
             <div className="hearts-container">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <svg
-                  key={i}
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  className={i < hearts ? "pulse-heart" : ""}
-                  fill={i < hearts ? "#ff4d4d" : "rgba(255,255,255,0.05)"}
-                  style={{
-                    opacity: i < hearts ? 1 : 0.3,
-                    transition: 'all 0.3s ease'
-                  }}
-                >
-                  <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-                </svg>
-              ))}
+              {Array.from({ length: 3 }).map((_, i) => {
+                const wasJustRegenerated = i === hearts - 1 && hearts > 0
+                return (
+                  <svg
+                    key={i}
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    className={`${i < hearts ? "pulse-heart" : ""} ${wasJustRegenerated ? "heart-pulse" : ""}`}
+                    fill={i < hearts ? "#ff4d4d" : "rgba(255,255,255,0.05)"}
+                    style={{
+                      opacity: i < hearts ? 1 : 0.3,
+                      transition: 'all 0.3s ease'
+                    }}
+                  >
+                    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+                  </svg>
+                )
+              })}
             </div>
 
           </div>
@@ -1413,7 +1780,7 @@ function App() {
 
           {!gameOver && (
             // Quiz Panel section - transparency forced in CSS
-            <section className={`quiz-panel ${isMapTap ? 'compact' : ''} `} aria-live="polite">
+            <section className={`quiz-panel ${isMapTap ? 'compact' : ''} shimmer ${showShimmer ? 'shimmer-active' : ''}`} aria-live="polite">
               {isMapTap ? (
                 <div className="compact-prompt">
                   <div className="compact-prompt-header">
@@ -1523,37 +1890,159 @@ function App() {
                   </svg>
                 </button>
               </div>
+              <div className="atlas-tabs">
+                <button
+                  className={`atlas-tab ${atlasTab === 'atlas' ? 'active' : ''}`}
+                  onClick={() => setAtlasTab('atlas')}
+                >
+                  Atlas
+                </button>
+                <button
+                  className={`atlas-tab ${atlasTab === 'stats' ? 'active' : ''}`}
+                  onClick={() => setAtlasTab('stats')}
+                >
+                  Statistics
+                </button>
+              </div>
               <div className="atlas-content">
-                {Object.entries(atlasByContinent).map(([continent, countries]) => (
-                  <div key={continent} className="atlas-continent-section">
-                    <h3>{continent}</h3>
-                    <div className="atlas-grid">
-                      {countries.map(c => {
-                        const mCount = mastery[c.cca3!] || 0
-                        const isMastered = mCount > 0
-                        const progress = Math.min(100, (mCount / 3) * 100)
-                        return (
-                          <div key={c.cca3} className={`atlas - item ${isMastered ? '' : 'unmastered'} `}>
-                            {c.flagSvg || c.flagPng ? (
-                              <img
-                                src={resolvePublicAsset(c.flagSvg || c.flagPng || undefined)}
-                                className="atlas-item-flag"
-                                alt=""
-                              />
-                            ) : (
-                              <div className="atlas-item-flag" style={{ background: 'rgba(255,255,255,0.05)' }} />
-                            )}
-                            <div className="atlas-item-name">{c.name}</div>
-                            <div className="atlas-mastery-bar">
-                              <div className="atlas-mastery-fill" style={{ width: `${progress}% ` }} />
+                {atlasTab === 'atlas' ? (
+                  Object.entries(atlasByContinent).map(([continent, countries]) => (
+                    <div key={continent} className="atlas-continent-section">
+                      <h3>{continent}</h3>
+                      <div className="atlas-grid">
+                        {countries.map(c => {
+                          const mCount = mastery[c.cca3!] || 0
+                          const isMastered = mCount > 0
+                          const progress = Math.min(100, (mCount / 3) * 100)
+                          return (
+                            <div key={c.cca3} className={`atlas-item ${isMastered ? '' : 'unmastered'}`}>
+                              {c.flagSvg || c.flagPng ? (
+                                <img
+                                  src={resolvePublicAsset(c.flagSvg || c.flagPng || undefined)}
+                                  className="atlas-item-flag"
+                                  alt=""
+                                />
+                              ) : (
+                                <div className="atlas-item-flag" style={{ background: 'rgba(255,255,255,0.05)' }} />
+                              )}
+                              <div className="atlas-item-name">{c.name}</div>
+                              <div className="atlas-mastery-bar">
+                                <div className="atlas-mastery-fill" style={{ width: `${progress}%` }} />
+                              </div>
+                              {progress >= 100 && <div className="atlas-mastery-text">Mastered</div>}
                             </div>
-                            {progress >= 100 && <div className="atlas-mastery-text">Mastered</div>}
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="stats-dashboard">
+                    <div className="stats-section">
+                      <h3 className="stats-section-title">Overview</h3>
+                      <div className="stats-grid">
+                        <div className="stat-card">
+                          <div className="stat-card-label">Total Questions</div>
+                          <div className="stat-card-value">
+                            {Object.values(performanceStats).reduce((sum, stat) => sum + stat.total, 0)}
                           </div>
-                        )
-                      })}
+                        </div>
+                        <div className="stat-card">
+                          <div className="stat-card-label">Countries Mastered</div>
+                          <div className="stat-card-value">
+                            {Object.values(mastery).filter(v => v > 0).length}
+                          </div>
+                        </div>
+                        <div className="stat-card">
+                          <div className="stat-card-label">Overall Accuracy</div>
+                          <div className="stat-card-value">
+                            {(() => {
+                              const total = Object.values(performanceStats).reduce((sum, stat) => sum + stat.total, 0)
+                              const correct = Object.values(performanceStats).reduce((sum, stat) => sum + stat.correct, 0)
+                              return total > 0 ? `${Math.round((correct / total) * 100)}%` : '0%'
+                            })()}
+                          </div>
+                        </div>
+                        <div className="stat-card">
+                          <div className="stat-card-label">Avg Response Time</div>
+                          <div className="stat-card-value">
+                            {(() => {
+                              const total = Object.values(performanceStats).reduce((sum, stat) => sum + stat.total, 0)
+                              const totalTime = Object.values(performanceStats).reduce((sum, stat) => sum + stat.totalResponseTime, 0)
+                              return total > 0 ? `${Math.round(totalTime / total / 1000)}s` : '0s'
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="stats-section">
+                      <h3 className="stats-section-title">Accuracy by Question Type</h3>
+                      <div className="stats-list">
+                        {Object.entries(performanceStats)
+                          .filter(([_, stat]) => stat.total > 0)
+                          .sort(([_, a], [__, b]) => b.total - a.total)
+                          .map(([type, stat]) => {
+                            const accuracy = stat.total > 0 ? (stat.correct / stat.total) * 100 : 0
+                            const avgTime = stat.total > 0 ? stat.totalResponseTime / stat.total / 1000 : 0
+                            const typeLabel = type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                            return (
+                              <div key={type} className="stats-item">
+                                <div className="stats-item-header">
+                                  <span className="stats-item-type">{typeLabel}</span>
+                                  <span className="stats-item-accuracy">{Math.round(accuracy)}%</span>
+                                </div>
+                                <div className="stats-item-bar">
+                                  <div
+                                    className="stats-item-bar-fill"
+                                    style={{
+                                      width: `${accuracy}%`,
+                                      backgroundColor: accuracy >= 80 ? 'var(--success-green)' : accuracy >= 50 ? 'var(--accent-blue)' : 'var(--error-red)'
+                                    }}
+                                  />
+                                </div>
+                                <div className="stats-item-footer">
+                                  <span className="stats-item-count">{stat.correct}/{stat.total} correct</span>
+                                  <span className="stats-item-time">Avg: {Math.round(avgTime)}s</span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        {Object.values(performanceStats).filter(stat => stat.total > 0).length === 0 && (
+                          <div className="stats-empty">No statistics yet. Start playing to see your performance!</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="stats-section">
+                      <h3 className="stats-section-title">Mastery Heat Map</h3>
+                      <div className="mastery-heatmap">
+                        {Object.entries(atlasByContinent).map(([continent, countries]) => {
+                          const continentMastered = countries.filter(c => (mastery[c.cca3!] || 0) > 0).length
+                          const continentTotal = countries.length
+                          const continentProgress = continentTotal > 0 ? (continentMastered / continentTotal) * 100 : 0
+                          return (
+                            <div key={continent} className="heatmap-continent">
+                              <div className="heatmap-continent-header">
+                                <span className="heatmap-continent-name">{continent}</span>
+                                <span className="heatmap-continent-progress">{continentMastered}/{continentTotal}</span>
+                              </div>
+                              <div className="heatmap-continent-bar">
+                                <div
+                                  className="heatmap-continent-fill"
+                                  style={{
+                                    width: `${continentProgress}%`,
+                                    backgroundColor: continentProgress >= 80 ? 'var(--success-green)' : continentProgress >= 50 ? 'var(--accent-blue)' : 'var(--text-dimmer)'
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           )}
@@ -1719,6 +2208,7 @@ function buildNextQuestion(args: {
   level: number
   idPrefix: string
   completedQuestions: string[]
+  performanceStats?: Record<QuestionType, { correct: number; total: number; totalResponseTime: number }>
 }) {
   const allTypes: QuestionType[] = [
     'map_tap',
@@ -1746,6 +2236,8 @@ function buildNextQuestion(args: {
     'landmark_photo_mcq',
     'silhouette_mcq',
     'coastline_mcq',
+    'journey_puzzle',
+    'region_builder',
   ]
 
   // Filter types by level
@@ -1783,12 +2275,17 @@ function buildNextQuestion(args: {
     levelTypes.push('flag_colors_mcq', 'gdp_tier', 'economy_exports_mcq', 'unesco_mcq')
   }
 
+  // Level 22+: Multi-Step Puzzles
+  if (args.level >= 22) {
+    levelTypes.push('journey_puzzle', 'region_builder')
+  }
+
   const types = levelTypes.length > 0 ? levelTypes : allTypes
 
   for (let attempt = 0; attempt < types.length; attempt += 1) {
     const type = types[args.typeIndexRef.current % types.length]
     args.typeIndexRef.current += 1
-    const question = buildQuestionForType(type, { ...args, completedQuestions: args.completedQuestions })
+    const question = buildQuestionForType(type, { ...args, completedQuestions: args.completedQuestions, performanceStats: args.performanceStats })
     if (question) {
       question.id = `${args.idPrefix} -${question.id} `
       return question
@@ -1802,6 +2299,71 @@ function buildNextQuestion(args: {
     options: ['Retry'],
     correctIndex: 0,
   }
+}
+
+// Helper function to find a path through countries (BFS)
+function findJourneyPath(
+  start: CountryMeta,
+  end: CountryMeta,
+  intermediate: CountryMeta[],
+  countriesByCca3: Map<string, CountryMeta>,
+  maxDepth: number = 4
+): string[] | null {
+  if (start.cca3 === end.cca3) return null
+  
+  // Build path: start -> intermediate countries -> end
+  const path: string[] = [start.cca3!]
+  
+  let current = start
+  for (const target of intermediate) {
+    const segment = findPathBetween(current, target, countriesByCca3, maxDepth)
+    if (!segment || segment.length === 0) return null
+    // Add path excluding the start (already in path)
+    path.push(...segment.slice(1))
+    current = target
+  }
+  
+  // Final segment to end
+  const finalSegment = findPathBetween(current, end, countriesByCca3, maxDepth)
+  if (!finalSegment || finalSegment.length === 0) return null
+  path.push(...finalSegment.slice(1))
+  
+  return path
+}
+
+// BFS to find path between two countries
+function findPathBetween(
+  start: CountryMeta,
+  end: CountryMeta,
+  countriesByCca3: Map<string, CountryMeta>,
+  maxDepth: number = 3
+): string[] | null {
+  if (start.cca3 === end.cca3) return [start.cca3!]
+  
+  const queue: { country: CountryMeta; path: string[] }[] = [{ country: start, path: [start.cca3!] }]
+  const visited = new Set<string>([start.cca3!])
+  
+  while (queue.length > 0 && queue[0].path.length <= maxDepth) {
+    const { country, path } = queue.shift()!
+    
+    for (const borderCode of country.borders || []) {
+      if (visited.has(borderCode)) continue
+      visited.add(borderCode)
+      
+      const neighbor = countriesByCca3.get(borderCode)
+      if (!neighbor) continue
+      
+      const newPath = [...path, borderCode]
+      
+      if (borderCode === end.cca3) {
+        return newPath
+      }
+      
+      queue.push({ country: neighbor, path: newPath })
+    }
+  }
+  
+  return null
 }
 
 function buildQuestionForType(
@@ -1836,13 +2398,143 @@ function buildQuestionForType(
     queueRef: MutableRefObject<Record<QuestionType, string[]>>
     level: number
     completedQuestions: string[]
+    performanceStats?: Record<QuestionType, { correct: number; total: number; totalResponseTime: number }>
   },
 ) {
+  // Journey puzzle and region builder don't use getNextCountryForType
+  if (type === 'journey_puzzle') {
+    // Find countries with good border connectivity
+    const countriesWithBorders = args.pools.neighborPool.filter(c => (c.borders?.length ?? 0) >= 2)
+    if (countriesWithBorders.length < 3) return null
+
+    const shuffled = shuffle(countriesWithBorders)
+    const start = shuffled[0]
+    
+    // Try to find a 2-3 step journey
+    let end: CountryMeta | null = null
+    let intermediate: CountryMeta[] = []
+    let journeyPath: string[] | null = null
+
+    for (let attempts = 0; attempts < 50; attempts++) {
+      const candidateEnd = shuffled[Math.floor(Math.random() * shuffled.length)]
+      if (candidateEnd.cca3 === start.cca3) continue
+
+      // Try with 1 intermediate country
+      const candidateIntermediate = shuffled.filter(c => 
+        c.cca3 !== start.cca3 && 
+        c.cca3 !== candidateEnd.cca3 &&
+        (c.borders?.length ?? 0) >= 2
+      )
+      
+      if (candidateIntermediate.length > 0) {
+        const inter = candidateIntermediate[0]
+        journeyPath = findJourneyPath(start, candidateEnd, [inter], args.pools.countriesByCca3, 4)
+        if (journeyPath && journeyPath.length >= 3 && journeyPath.length <= 5) {
+          end = candidateEnd
+          intermediate = [inter]
+          break
+        }
+      }
+
+      // Try direct path if no intermediate works
+      journeyPath = findPathBetween(start, candidateEnd, args.pools.countriesByCca3, 3)
+      if (journeyPath && journeyPath.length >= 2 && journeyPath.length <= 4) {
+        end = candidateEnd
+        intermediate = []
+        journeyPath = [start.cca3!, ...journeyPath.slice(1)]
+        break
+      }
+    }
+
+    if (!end || !journeyPath) return null
+
+    // Build options: correct answer + distractors
+    const optionCandidates = [{ name: end.name, cca3: end.cca3 }]
+    const excludedCca3s = new Set([start.cca3, end.cca3, ...intermediate.map(i => i.cca3)])
+    
+    const distractors = shuffle(args.pools.neighborPool.filter(c => 
+      !excludedCca3s.has(c.cca3) &&
+      c.region === start.region // Same region for difficulty
+    )).slice(0, 3)
+
+    for (const distractor of distractors) {
+      optionCandidates.push({ name: distractor.name, cca3: distractor.cca3 })
+    }
+
+    const finalCandidates = shuffle(optionCandidates)
+    const finalOptions = finalCandidates.map(item => item.name)
+    const optionCca3s = finalCandidates.map(item => item.cca3)
+
+    const pathDescription = intermediate.length > 0
+      ? `Starting in ${start.name}, travel through ${intermediate.map(i => i.name).join(' and ')}, then continue. Where do you end up?`
+      : `Starting in ${start.name}, travel through neighboring countries. Where do you end up?`
+
+    // Get feature for start country for camera positioning
+    const startFeature = args.featureIndex.get(start.cca3!)
+
+    return {
+      id: `${type}-${start.cca3}-${end.cca3}`,
+      type,
+      prompt: pathDescription,
+      options: finalOptions,
+      correctIndex: finalOptions.indexOf(end.name),
+      optionCca3s,
+      targetCca3: end.cca3 ?? undefined,
+      displayCca3s: journeyPath,
+      journeyPath,
+      targetFeature: startFeature, // Use start country for camera
+    }
+  }
+
+  if (type === 'region_builder') {
+    // Pick a region/subregion and find countries in it
+    const regions = new Set(args.pools.countries.map(c => c.region).filter(Boolean))
+    const regionArray = Array.from(regions)
+    if (regionArray.length === 0) return null
+
+    const targetRegion = shuffle(regionArray)[0]
+    const regionCountries = args.pools.countries.filter(c => c.region === targetRegion)
+    
+    if (regionCountries.length < 3) return null
+    
+    // Use a subset (3-6 countries) for the question
+    const questionSize = Math.min(6, Math.max(3, Math.floor(regionCountries.length * 0.4)))
+    const correctCountries = shuffle(regionCountries).slice(0, questionSize)
+    const correctCca3s = correctCountries.map(c => c.cca3!).filter(Boolean)
+
+    // Build distractors from other regions (same number as correct)
+    const distractors = shuffle(args.pools.countries.filter(c => 
+      c.region !== targetRegion &&
+      !correctCca3s.includes(c.cca3!)
+    )).slice(0, questionSize)
+
+    const allOptions = shuffle([...correctCountries, ...distractors])
+    const optionCca3s = allOptions.map(c => c.cca3!).filter(Boolean)
+
+    // Get feature for first correct country for camera positioning
+    const firstFeature = correctCca3s.length > 0 ? args.featureIndex.get(correctCca3s[0]) : undefined
+
+    return {
+      id: `${type}-${targetRegion}-${Date.now()}`,
+      type,
+      prompt: `Select all countries in ${targetRegion}`,
+      options: allOptions.map(c => c.name),
+      correctIndex: undefined, // Multi-select, no single correct index
+      optionCca3s,
+      targetCca3: undefined,
+      displayCca3s: correctCca3s,
+      correctCountries: correctCca3s,
+      selectedCountries: [],
+      targetFeature: firstFeature, // Use first country for camera
+    }
+  }
+
   const country = getNextCountryForType(type, {
     pools: args.pools,
     queueRef: args.queueRef,
     level: args.level,
-    completedQuestions: args.completedQuestions
+    completedQuestions: args.completedQuestions,
+    performanceStats: args.performanceStats
   })
   if (!country || !country.cca3) return null
 
@@ -2377,6 +3069,133 @@ function buildQuestionForType(
     }
   }
 
+  if (type === 'journey_puzzle') {
+    // Find countries with good border connectivity
+    const countriesWithBorders = args.pools.neighborPool.filter(c => (c.borders?.length ?? 0) >= 2)
+    if (countriesWithBorders.length < 3) return null
+
+    const shuffled = shuffle(countriesWithBorders)
+    const start = shuffled[0]
+    
+    // Try to find a 2-3 step journey
+    let end: CountryMeta | null = null
+    let intermediate: CountryMeta[] = []
+    let journeyPath: string[] | null = null
+
+    for (let attempts = 0; attempts < 50; attempts++) {
+      const candidateEnd = shuffled[Math.floor(Math.random() * shuffled.length)]
+      if (candidateEnd.cca3 === start.cca3) continue
+
+      // Try with 1 intermediate country
+      const candidateIntermediate = shuffled.filter(c => 
+        c.cca3 !== start.cca3 && 
+        c.cca3 !== candidateEnd.cca3 &&
+        (c.borders?.length ?? 0) >= 2
+      )
+      
+      if (candidateIntermediate.length > 0) {
+        const inter = candidateIntermediate[0]
+        journeyPath = findJourneyPath(start, candidateEnd, [inter], args.pools.countriesByCca3, 4)
+        if (journeyPath && journeyPath.length >= 3 && journeyPath.length <= 5) {
+          end = candidateEnd
+          intermediate = [inter]
+          break
+        }
+      }
+
+      // Try direct path if no intermediate works
+      journeyPath = findPathBetween(start, candidateEnd, args.pools.countriesByCca3, 3)
+      if (journeyPath && journeyPath.length >= 2 && journeyPath.length <= 4) {
+        end = candidateEnd
+        intermediate = []
+        journeyPath = [start.cca3!, ...journeyPath.slice(1)]
+        break
+      }
+    }
+
+    if (!end || !journeyPath) return null
+
+    // Build options: correct answer + distractors
+    const optionCandidates = [{ name: end.name, cca3: end.cca3 }]
+    const excludedCca3s = new Set([start.cca3, end.cca3, ...intermediate.map(i => i.cca3)])
+    
+    const distractors = shuffle(args.pools.neighborPool.filter(c => 
+      !excludedCca3s.has(c.cca3) &&
+      c.region === start.region // Same region for difficulty
+    )).slice(0, 3)
+
+    for (const distractor of distractors) {
+      optionCandidates.push({ name: distractor.name, cca3: distractor.cca3 })
+    }
+
+    const finalCandidates = shuffle(optionCandidates)
+    const finalOptions = finalCandidates.map(item => item.name)
+    const optionCca3s = finalCandidates.map(item => item.cca3)
+
+    const pathDescription = intermediate.length > 0
+      ? `Starting in ${start.name}, travel through ${intermediate.map(i => i.name).join(' and ')}, then continue. Where do you end up?`
+      : `Starting in ${start.name}, travel through neighboring countries. Where do you end up?`
+
+    // Get feature for start country for camera positioning
+    const startFeature = args.featureIndex.get(start.cca3!)
+
+    return {
+      id: `${type}-${start.cca3}-${end.cca3}`,
+      type,
+      prompt: pathDescription,
+      options: finalOptions,
+      correctIndex: finalOptions.indexOf(end.name),
+      optionCca3s,
+      targetCca3: end.cca3 ?? undefined,
+      displayCca3s: journeyPath,
+      journeyPath,
+      targetFeature: startFeature, // Use start country for camera
+    }
+  }
+
+  if (type === 'region_builder') {
+    // Pick a region/subregion and find countries in it
+    const regions = new Set(args.pools.countries.map(c => c.region).filter(Boolean))
+    const regionArray = Array.from(regions)
+    if (regionArray.length === 0) return null
+
+    const targetRegion = shuffle(regionArray)[0]
+    const regionCountries = args.pools.countries.filter(c => c.region === targetRegion)
+    
+    if (regionCountries.length < 3) return null
+    
+    // Use a subset (3-6 countries) for the question
+    const questionSize = Math.min(6, Math.max(3, Math.floor(regionCountries.length * 0.4)))
+    const correctCountries = shuffle(regionCountries).slice(0, questionSize)
+    const correctCca3s = correctCountries.map(c => c.cca3!).filter(Boolean)
+
+    // Build distractors from other regions (same number as correct)
+    const distractors = shuffle(args.pools.countries.filter(c => 
+      c.region !== targetRegion &&
+      !correctCca3s.includes(c.cca3!)
+    )).slice(0, questionSize)
+
+    const allOptions = shuffle([...correctCountries, ...distractors])
+    const optionCca3s = allOptions.map(c => c.cca3!).filter(Boolean)
+
+    // Get feature for first correct country for camera positioning
+    const firstFeature = correctCca3s.length > 0 ? args.featureIndex.get(correctCca3s[0]) : undefined
+
+    return {
+      id: `${type}-${targetRegion}-${Date.now()}`,
+      type,
+      prompt: `Select all countries in ${targetRegion}`,
+      options: allOptions.map(c => c.name),
+      correctIndex: undefined, // Multi-select, no single correct index
+      optionCca3s,
+      targetCca3: undefined,
+      displayCca3s: correctCca3s,
+      correctCountries: correctCca3s,
+      selectedCountries: [],
+      targetFeature: firstFeature, // Use first country for camera
+    }
+  }
+
   return null
 }
 
@@ -2407,6 +3226,7 @@ function getNextCountryForType(
     queueRef: MutableRefObject<Record<QuestionType, string[]>>
     level: number
     completedQuestions: string[]
+    performanceStats?: Record<QuestionType, { correct: number; total: number; totalResponseTime: number }>
   },
 ) {
   const pool =
@@ -2416,7 +3236,7 @@ function getNextCountryForType(
         ? args.pools.flagPool
         : type === 'capital_mcq'
           ? args.pools.capitalPool
-          : type === 'neighbor_mcq' || type === 'neighbor_count_mcq'
+          : type === 'neighbor_mcq' || type === 'neighbor_count_mcq' || type === 'journey_puzzle'
             ? args.pools.neighborPool
             : type === 'currency_mcq'
               ? args.pools.currencyPool
@@ -2439,7 +3259,7 @@ function getNextCountryForType(
                             ? args.pools.peakPool
                             : type === 'range_mcq'
                               ? args.pools.rangePool
-                              : type === 'region_mcq' || type === 'subregion_outlier'
+                              : type === 'region_mcq' || type === 'subregion_outlier' || type === 'region_builder'
                                 ? args.pools.regionPool
                                 : type === 'unesco_mcq'
                                   ? args.pools.unescoPool
@@ -2452,8 +3272,24 @@ function getNextCountryForType(
                                         : args.pools.countries
   if (!pool.length) return null
 
-  // Slice pool based on level
-  const basePool = getPoolForLevel(pool, args.level)
+  // Adaptive difficulty: adjust level based on performance
+  let adjustedLevel = args.level
+  if (args.performanceStats && args.performanceStats[type]) {
+    const stats = args.performanceStats[type]
+    if (stats.total >= 5) { // Need at least 5 attempts for meaningful stats
+      const accuracy = stats.correct / stats.total
+      if (accuracy > 0.8) {
+        // High accuracy: increase difficulty by expanding pool
+        adjustedLevel = Math.min(args.level + 2, 50)
+      } else if (accuracy < 0.5) {
+        // Low accuracy: decrease difficulty
+        adjustedLevel = Math.max(args.level - 1, 1)
+      }
+    }
+  }
+
+  // Slice pool based on adjusted level
+  const basePool = getPoolForLevel(pool, adjustedLevel)
 
   // Filter out completed questions for this specific type
   let currentPool = basePool.filter(c => !args.completedQuestions.includes(`${type}-${c.cca3}`))
@@ -2604,6 +3440,10 @@ function formatScore(n: number) {
 
 function getPointsForQuestion(type: QuestionType): number {
   switch (type) {
+    case 'journey_puzzle':
+      return 1200 // High value for multi-step puzzle
+    case 'region_builder':
+      return 1000 // High value for multi-select puzzle
     case 'map_tap':
       return 1000
     case 'coastline_mcq':
@@ -2621,6 +3461,7 @@ function getPointsForQuestion(type: QuestionType): number {
     case 'unesco_mcq':
     case 'economy_exports_mcq':
     case 'gdp_tier':
+    case 'journey_puzzle':
       return 600
     case 'population_rank':
     case 'capital_mcq':
@@ -2667,6 +3508,43 @@ function computeBBox(geometry: GeoFeature['geometry']): [number, number, number,
 
 function bboxCenter(bbox: [number, number, number, number]) {
   return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2] as [number, number]
+}
+
+// Custom easing functions for cinematic camera
+function easeOutQuart(t: number): number {
+  return 1 - Math.pow(1 - t, 4)
+}
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
+
+// Determine country type for contextual camera behavior
+function getCountryType(country: CountryMeta | null): 'island' | 'mountainous' | 'large' | 'small' | 'standard' {
+  if (!country) return 'standard'
+  
+  // Island: not landlocked, small area, or in island-heavy regions
+  const isIsland = !country.landlocked && (
+    country.area < 50000 || // Small area (km²)
+    ['Oceania', 'Caribbean'].includes(country.subregion) ||
+    country.subregion.includes('Island')
+  )
+  
+  // Mountainous: has mountain ranges or high peaks
+  const isMountainous = (country.mountainRanges?.length ?? 0) > 0 || 
+                        (country.highestPeak?.elevation ?? 0) > 3000
+  
+  // Large: area > 1M km²
+  const isLarge = country.area > 1000000
+  
+  // Small: area < 100k km²
+  const isSmall = country.area < 100000
+  
+  if (isIsland) return 'island'
+  if (isMountainous) return 'mountainous'
+  if (isLarge) return 'large'
+  if (isSmall) return 'small'
+  return 'standard'
 }
 
 function isPointInFeature(lng: number, lat: number, record: FeatureRecord) {

@@ -12,6 +12,10 @@ export default defineConfig({
       includeAssets: ['icons/192.png', 'icons/512.png', 'vite.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        // Exclude Vite dev server files from being cached
+        navigateFallbackDenylist: [/^\/@/, /^\/node_modules/],
+        // Don't cache Vite HMR files
+        exclude: [/^\/@/, /^\/node_modules/, /\.map$/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/flags/'),
@@ -25,6 +29,11 @@ export default defineConfig({
             },
           },
         ],
+      },
+      // Disable service worker in development mode
+      devOptions: {
+        enabled: false,
+        type: 'module',
       },
       manifest: {
         name: 'GeoTest',

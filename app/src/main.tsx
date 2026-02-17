@@ -10,4 +10,7 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-registerSW({ immediate: true })
+// Only register service worker in production (not in dev mode)
+if (import.meta.env.PROD) {
+  registerSW({ immediate: true })
+}

@@ -185,9 +185,7 @@ function App() {
   const [guidanceTip, setGuidanceTip] = useState<string | null>(null)
   const [scorePopups, setScorePopups] = useState<{ id: string; x: number; y: number; value: string }[]>([])
   const [mapShake, setMapShake] = useState(false)
-  const [lastCorrectCca3, setLastCorrectCca3] = useState<string | null>(null)
   const rotationTimeoutRef = useRef<number | null>(null)
-  const cameraAnimationRef = useRef<boolean>(false)
   const [atlasTab, setAtlasTab] = useState<'atlas' | 'stats'>('atlas')
 
   const countryPools = useMemo(() => {
@@ -494,10 +492,11 @@ function App() {
           // Migrate old performanceStats format (without totalResponseTime)
           const migratedStats: Record<QuestionType, { correct: number; total: number; totalResponseTime: number }> = {} as any
           for (const [type, stat] of Object.entries(data.performanceStats)) {
+            const statData = stat as { correct?: number; total?: number; totalResponseTime?: number }
             migratedStats[type as QuestionType] = {
-              correct: stat.correct || 0,
-              total: stat.total || 0,
-              totalResponseTime: stat.totalResponseTime || 0
+              correct: statData.correct || 0,
+              total: statData.total || 0,
+              totalResponseTime: statData.totalResponseTime || 0
             }
           }
           setPerformanceStats(migratedStats)
@@ -974,43 +973,7 @@ function App() {
       rotationTimeoutRef.current = null
     }
 
-    const isMapTap = currentQuestion.type === 'map_tap'
-    const isCoastline = currentQuestion.type === 'coastline_mcq'
-    const isSilhouette = currentQuestion.type === 'silhouette_mcq'
-    let zoom = isCoastline ? 2.5 : (isMapTap ? 0.85 : (isSilhouette ? 2.0 : 1.2))
-
-    const center = bboxCenter(currentQuestion.targetFeature.bbox)
-    const randomBearing = (Math.random() - 0.5) * 20 // ±10 deg
-    
-    // Get country for contextual pitch
-    const targetCca3 = currentQuestion.targetCca3
-    const country = targetCca3 ? countryPools.countriesByCca3.get(targetCca3) : null
-    const countryType = getCountryType(country)
-    
-    // Contextual pitch based on country type
-    let dynamicPitch: number
-    if (isCoastline) {
-      dynamicPitch = 0
-    } else {
-      switch (countryType) {
-        case 'island':
-          dynamicPitch = 20 + Math.random() * 15 // 20-35° for islands (lower to show coastline)
-          break
-        case 'mountainous':
-          dynamicPitch = 60 + Math.random() * 20 // 60-80° for mountains (higher to emphasize terrain)
-          break
-        case 'large':
-          zoom = Math.max(zoom - 0.3, 0.5) // Wider zoom for large countries
-          dynamicPitch = 30 + Math.random() * 20 // 30-50°
-          break
-        case 'small':
-          zoom = Math.min(zoom + 0.2, 3.0) // Tighter zoom for small countries
-          dynamicPitch = 40 + Math.random() * 20 // 40-60°
-          break
-        default:
-          dynamicPitch = 35 + Math.random() * 25 // 35-60° standard
-      }
-    }
+    // Values are recalculated inside setTimeout, so no need to calculate here
 
     // Cancel any pending rotation when new question appears
     if (rotationTimeoutRef.current) {
@@ -1049,7 +1012,7 @@ function App() {
         const currentBearing = (Math.random() - 0.5) * 20
         
         const currentTargetCca3 = currentQuestion.targetCca3
-        const currentCountry = currentTargetCca3 ? countryPools.countriesByCca3.get(currentTargetCca3) : null
+        const currentCountry = currentTargetCca3 ? countryPools.countriesByCca3.get(currentTargetCca3) ?? null : null
         const currentCountryType = getCountryType(currentCountry)
         
         let currentPitch: number
@@ -1340,7 +1303,7 @@ function App() {
 
     if (isCorrect) {
       if (correctCca3) {
-        setLastCorrectCca3(correctCca3)
+        // Track last correct country (for potential future use)
         setMastery((prev) => {
           const nextVal = (prev[correctCca3] ?? 0) + 1
           const next = { ...prev, [correctCca3]: nextVal }
@@ -1990,7 +1953,36 @@ function App() {
                 </button>
               </div>
 
-              {currentQuestion?.options && (
+              {currentQuestion?.type === 'region_builder' && currentQuestion.options ? (
+                <div className="region-builder-options">
+                  {currentQuestion.options.map((option, index) => {
+                    const cca3 = currentQuestion.optionCca3s?.[index]
+                    const isSelected = cca3 && (currentQuestion.selectedCountries || []).includes(cca3)
+                    return (
+                      <div
+                        key={option}
+                        className={`region-builder-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => handleOptionSelect(index)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!isSelected}
+                          onChange={() => {}}
+                          readOnly
+                        />
+                        <span>{option}</span>
+                      </div>
+                    )
+                  })}
+                  <button
+                    className="region-builder-submit"
+                    onClick={handleRegionBuilderSubmit}
+                    disabled={!currentQuestion.selectedCountries || currentQuestion.selectedCountries.length === 0}
+                  >
+                    Submit Selection
+                  </button>
+                </div>
+              ) : currentQuestion?.options ? (
                 <div className="options">
                   {currentQuestion.options.map((option, index) => (
                     <button
@@ -2008,7 +2000,7 @@ function App() {
                     </button>
                   ))}
                 </div>
-              )}
+              ) : null}
 
               {!isMapTap && currentQuestion?.type === 'map_tap' && (
                 <div className="map-instruction">
@@ -3696,14 +3688,7 @@ function bboxCenter(bbox: [number, number, number, number]) {
   return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2] as [number, number]
 }
 
-// Custom easing functions for cinematic camera
-function easeOutQuart(t: number): number {
-  return 1 - Math.pow(1 - t, 4)
-}
-
-function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
-}
+// Custom easing functions removed - using MapLibre default easing for stability
 
 // Determine country type for contextual camera behavior
 function getCountryType(country: CountryMeta | null): 'island' | 'mountainous' | 'large' | 'small' | 'standard' {

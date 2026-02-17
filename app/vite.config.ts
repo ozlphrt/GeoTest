@@ -15,7 +15,7 @@ export default defineConfig({
         // Exclude Vite dev server files from being cached
         navigateFallbackDenylist: [/^\/@/, /^\/node_modules/],
         // Don't cache Vite HMR files
-        exclude: [/^\/@/, /^\/node_modules/, /\.map$/],
+        globIgnores: ['**/@vite/**', '**/node_modules/**', '**/*.map'],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/flags/'),

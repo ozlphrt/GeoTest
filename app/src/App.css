@@ -46,8 +46,8 @@ body.light-mode {
 }
 
 body.light-mode .app {
-  background: linear-gradient(135deg, #e0e7ef 0%, #f0f4f8 100%);
-  background-image: linear-gradient(135deg, #e0e7ef 0%, #f0f4f8 100%);
+  background: linear-gradient(135deg, #cfd9e6 0%, #eef2f6 100%);
+  background-image: linear-gradient(135deg, #cfd9e6 0%, #eef2f6 100%);
 }
 
 body.light-mode .app::before {
@@ -287,29 +287,29 @@ body.light-mode .circular-bg {
   transform: translateX(-50%);
   width: 95%;
   max-width: 480px;
-  background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  background: rgba(15, 20, 30, 0.2) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(180%) !important;
+  backdrop-filter: blur(8px) saturate(180%) !important;
   padding: 12px 20px;
   border-radius: 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   text-align: center;
-  border: none;
-  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   z-index: 5;
   transition: background 0.3s ease, color 0.3s ease;
 }
 
 body.light-mode .quiz-panel {
   box-shadow:
-    0 8px 32px rgba(30, 41, 59, 0.15),
-    0 2px 8px rgba(30, 41, 59, 0.1),
-    inset 0 2px 0 rgba(255, 255, 255, 1),
-    inset 0 -2px 0 rgba(30, 41, 59, 0.08);
-  border: none;
-  background: transparent;
+    0 8px 32px rgba(30, 41, 59, 0.1),
+    0 2px 8px rgba(30, 41, 59, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(8px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(180%) !important;
 }
 
 .quiz-panel.compact {

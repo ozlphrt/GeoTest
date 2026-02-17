@@ -779,7 +779,7 @@ function App() {
         type: 'line',
         source: 'countries',
         paint: {
-          'line-color': '#2d3644',
+          'line-color': theme === 'dark' ? '#2d3644' : '#cbd5e1',
           'line-width': 1,
         },
       })
@@ -999,7 +999,7 @@ function App() {
         : (theme === 'dark' ? '#1a202a' : '#e1e8ed'),
     ])
     // Revert borders/background to standard theme even in silhouette mode
-    map.setPaintProperty('country-borders', 'line-color', '#2d3644')
+    map.setPaintProperty('country-borders', 'line-color', theme === 'dark' ? '#2d3644' : '#cbd5e1')
     map.setPaintProperty('background', 'background-color', theme === 'dark' ? '#0b0f14' : '#f0f4f8')
   }, [currentQuestion?.hideLabels, currentQuestion?.targetCca3, theme])
 
@@ -1371,7 +1371,6 @@ function App() {
                 <div className="circular-text">
                   L.{level}
                 </div>
-                <div className="circular-sub">NEXT</div>
               </div>
             </div>
 
@@ -1413,6 +1412,7 @@ function App() {
           )}
 
           {!gameOver && (
+            // Quiz Panel section - transparency forced in CSS
             <section className={`quiz-panel ${isMapTap ? 'compact' : ''} `} aria-live="polite">
               {isMapTap ? (
                 <div className="compact-prompt">

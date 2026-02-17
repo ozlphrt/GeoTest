@@ -187,6 +187,7 @@ function App() {
   const [mapShake, setMapShake] = useState(false)
   const [lastCorrectCca3, setLastCorrectCca3] = useState<string | null>(null)
   const rotationTimeoutRef = useRef<number | null>(null)
+  const cameraAnimationRef = useRef<boolean>(false)
   const [atlasTab, setAtlasTab] = useState<'atlas' | 'stats'>('atlas')
 
   const countryPools = useMemo(() => {
@@ -975,7 +976,8 @@ function App() {
 
     const isMapTap = currentQuestion.type === 'map_tap'
     const isCoastline = currentQuestion.type === 'coastline_mcq'
-    const zoom = isCoastline ? 2.5 : (isMapTap ? 0.85 : 1.2)
+    const isSilhouette = currentQuestion.type === 'silhouette_mcq'
+    let zoom = isCoastline ? 2.5 : (isMapTap ? 0.85 : (isSilhouette ? 2.0 : 1.2))
 
     const center = bboxCenter(currentQuestion.targetFeature.bbox)
     const randomBearing = (Math.random() - 0.5) * 20 // ±10 deg
@@ -1010,29 +1012,123 @@ function App() {
       }
     }
 
-    // Cinematic flyTo with custom easing
-    map.flyTo({
-      center,
-      zoom,
-      duration: 2000, // Slightly longer for smoother motion
-      pitch: dynamicPitch,
-      bearing: randomBearing,
-      easing: easeOutQuart, // Custom easing for smooth deceleration
-      essential: true
-    })
-  }, [currentQuestion, mapLoaded, countryPools.countriesByCca3])
+    // Cancel any pending rotation when new question appears
+    if (rotationTimeoutRef.current) {
+      window.clearTimeout(rotationTimeoutRef.current)
+      rotationTimeoutRef.current = null
+    }
+
+    // Don't stop animations - let MapLibre handle transitions naturally
+    // MapLibre's flyTo will smoothly transition from current state
+    const questionId = currentQuestion.id
+    
+    // Small delay to batch rapid question changes and ensure map is ready
+    const animationTimeout = setTimeout(() => {
+      const currentMap = mapRef.current
+      if (!currentMap || !currentQuestion || currentQuestion.id !== questionId || !currentQuestion.targetFeature) {
+        return
+      }
+      
+      // Ensure map is in a valid state before animating
+      try {
+        // Check if map is loaded and ready
+        if (!currentMap.loaded() || !currentMap.getCenter()) {
+          return
+        }
+      } catch (e) {
+        return
+      }
+      
+      try {
+        // Recalculate values to ensure they're fresh
+        const currentIsMapTap = currentQuestion.type === 'map_tap'
+        const currentIsCoastline = currentQuestion.type === 'coastline_mcq'
+        const currentIsSilhouette = currentQuestion.type === 'silhouette_mcq'
+        let currentZoom = currentIsCoastline ? 2.5 : (currentIsMapTap ? 0.85 : (currentIsSilhouette ? 2.0 : 1.2))
+        const currentCenter = bboxCenter(currentQuestion.targetFeature.bbox)
+        const currentBearing = (Math.random() - 0.5) * 20
+        
+        const currentTargetCca3 = currentQuestion.targetCca3
+        const currentCountry = currentTargetCca3 ? countryPools.countriesByCca3.get(currentTargetCca3) : null
+        const currentCountryType = getCountryType(currentCountry)
+        
+        let currentPitch: number
+        if (currentIsCoastline) {
+          currentPitch = 0
+        } else {
+          switch (currentCountryType) {
+            case 'island':
+              currentPitch = 20 + Math.random() * 15
+              break
+            case 'mountainous':
+              currentPitch = 60 + Math.random() * 20
+              break
+            case 'large':
+              currentZoom = Math.max(currentZoom - 0.3, 0.5)
+              currentPitch = 30 + Math.random() * 20
+              break
+            case 'small':
+              currentZoom = Math.min(currentZoom + 0.2, 3.0)
+              currentPitch = 40 + Math.random() * 20
+              break
+            default:
+              currentPitch = 35 + Math.random() * 25
+          }
+        }
+
+        // Validate values before calling flyTo
+        if (!currentCenter || !isFinite(currentCenter[0]) || !isFinite(currentCenter[1]) ||
+            !isFinite(currentZoom) || !isFinite(currentPitch) || !isFinite(currentBearing)) {
+          console.warn('Invalid camera parameters, skipping animation')
+          return
+        }
+
+        // FlyTo without stopping - MapLibre handles smooth transitions
+        currentMap.flyTo({
+          center: currentCenter,
+          zoom: currentZoom,
+          duration: 1500,
+          pitch: currentPitch,
+          bearing: currentBearing,
+          essential: true
+        })
+      } catch (error) {
+        // Silently handle - map might be transitioning
+        console.warn('Camera animation skipped:', error)
+      }
+    }, 150) // Slightly longer delay to ensure map state is stable
+
+    return () => {
+      clearTimeout(animationTimeout)
+    }
+  }, [currentQuestion?.id, mapLoaded])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded || !currentQuestion) return
 
-    // Clear previous focus
+    // Clear previous focus and silhouette states
     for (const id of focusedIdsRef.current) {
-      map.setFeatureState({ source: 'countries', id }, { focus: false })
+      map.setFeatureState({ source: 'countries', id }, { focus: false, silhouette: false })
     }
     focusedIdsRef.current = []
 
     if (currentQuestion.type === 'map_tap') return
+
+    // Skip if camera movement is handled by the flyTo effect (questions with targetFeature)
+    // This prevents conflicts between flyTo and fitBounds
+    if (currentQuestion.targetFeature && 
+        currentQuestion.type !== 'journey_puzzle' && 
+        currentQuestion.type !== 'region_builder') {
+      // Camera movement handled by flyTo effect above
+      // Just set focus states for highlighting
+      const displayCca3s = (currentQuestion.displayCca3s ?? []).filter(Boolean)
+      for (const cca3 of displayCca3s) {
+        map.setFeatureState({ source: 'countries', id: cca3 }, { focus: true })
+        focusedIdsRef.current.push(cca3)
+      }
+      return
+    }
 
     // Handle journey_puzzle: show path
     if (currentQuestion.type === 'journey_puzzle' && currentQuestion.journeyPath) {
@@ -1047,13 +1143,16 @@ function App() {
         .filter(Boolean) as [number, number, number, number][]
       if (bboxes.length > 0) {
         const merged = bboxes.reduce(mergeBBoxes)
-        map.fitBounds(
-          [
-            [merged[0], merged[1]],
-            [merged[2], merged[3]],
-          ],
-          { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
-        )
+        requestAnimationFrame(() => {
+          if (!map || !currentQuestion) return
+          map.fitBounds(
+            [
+              [merged[0], merged[1]],
+              [merged[2], merged[3]],
+            ],
+            { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
+          )
+        })
       }
       return
     }
@@ -1071,17 +1170,21 @@ function App() {
         .filter(Boolean) as [number, number, number, number][]
       if (bboxes.length > 0) {
         const merged = bboxes.reduce(mergeBBoxes)
-        map.fitBounds(
-          [
-            [merged[0], merged[1]],
-            [merged[2], merged[3]],
-          ],
-          { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
-        )
+        requestAnimationFrame(() => {
+          if (!map || !currentQuestion) return
+          map.fitBounds(
+            [
+              [merged[0], merged[1]],
+              [merged[2], merged[3]],
+            ],
+            { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
+          )
+        })
       }
       return
     }
 
+    // For questions without targetFeature but with displayCca3s
     const displayCca3s = (currentQuestion.displayCca3s ?? []).filter(Boolean)
     if (!displayCca3s.length) return
 
@@ -1095,34 +1198,67 @@ function App() {
       .filter(Boolean) as [number, number, number, number][]
     if (!bboxes.length) return
     const merged = bboxes.reduce(mergeBBoxes)
-    map.fitBounds(
-      [
-        [merged[0], merged[1]],
-        [merged[2], merged[3]],
-      ],
-
-      { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
-    )
-  }, [currentQuestion?.id, featureIndex, currentQuestion?.journeyPath, currentQuestion?.selectedCountries])
+    
+    requestAnimationFrame(() => {
+      if (!map || !currentQuestion) return
+      map.fitBounds(
+        [
+          [merged[0], merged[1]],
+          [merged[2], merged[3]],
+        ],
+        { padding: 130, duration: 1500, maxZoom: 2.0, pitch: 45 },
+      )
+    })
+  }, [currentQuestion?.id, featureIndex, currentQuestion?.journeyPath, currentQuestion?.selectedCountries, currentQuestion?.targetFeature])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
+    
     const isSilhouette = currentQuestion?.hideLabels
-    map.setPaintProperty('country-fill', 'fill-color', [
-      'case',
-      ['==', ['feature-state', 'flash'], 'correct'],
-      '#2ecc71',
-      ['==', ['feature-state', 'flash'], 'incorrect'],
-      '#e74c3c',
-      (isSilhouette && currentQuestion?.targetCca3)
-        ? ['case', ['any', ['==', ['get', 'cca3'], currentQuestion.targetCca3], ['==', ['id'], currentQuestion.targetCca3]], '#ffffff', (theme === 'dark' ? '#1a202a' : '#e1e8ed')]
-        : (theme === 'dark' ? '#1a202a' : '#e1e8ed'),
-    ])
-    // Revert borders/background to standard theme even in silhouette mode
-    map.setPaintProperty('country-borders', 'line-color', theme === 'dark' ? '#2d3644' : '#cbd5e1')
-    map.setPaintProperty('background', 'background-color', theme === 'dark' ? '#0b0f14' : '#f0f4f8')
-  }, [currentQuestion?.hideLabels, currentQuestion?.targetCca3, theme])
+    const targetCca3 = currentQuestion?.targetCca3
+    
+    // Clear all silhouette states first
+    const allFocusedIds = [...focusedIdsRef.current]
+    if (targetCca3 && !allFocusedIds.includes(targetCca3)) {
+      allFocusedIds.push(targetCca3)
+    }
+    for (const id of allFocusedIds) {
+      try {
+        map.setFeatureState({ source: 'countries', id }, { silhouette: false })
+      } catch (e) {
+        // Ignore errors for invalid IDs
+      }
+    }
+    
+    // Set silhouette state for the target country, then update paint property
+    if (isSilhouette && targetCca3) {
+      try {
+        map.setFeatureState({ source: 'countries', id: targetCca3 }, { silhouette: true })
+      } catch (e) {
+        console.warn('Failed to set silhouette state:', e)
+      }
+    }
+    
+    // Use requestAnimationFrame to ensure state is set before updating paint
+    requestAnimationFrame(() => {
+      if (!map || !mapLoaded) return
+      
+      map.setPaintProperty('country-fill', 'fill-color', [
+        'case',
+        ['==', ['feature-state', 'flash'], 'correct'],
+        '#2ecc71',
+        ['==', ['feature-state', 'flash'], 'incorrect'],
+        '#e74c3c',
+        ['==', ['feature-state', 'silhouette'], true],
+        '#ffffff',
+        (theme === 'dark' ? '#1a202a' : '#e1e8ed'),
+      ])
+      // Revert borders/background to standard theme even in silhouette mode
+      map.setPaintProperty('country-borders', 'line-color', theme === 'dark' ? '#2d3644' : '#cbd5e1')
+      map.setPaintProperty('background', 'background-color', theme === 'dark' ? '#0b0f14' : '#f0f4f8')
+    })
+  }, [currentQuestion?.hideLabels, currentQuestion?.targetCca3, currentQuestion?.id, theme, mapLoaded])
 
   useEffect(() => {
     if (!currentQuestion || currentQuestion.type !== 'river_mcq') return
@@ -1219,19 +1355,24 @@ function App() {
         })
         
         // Post-answer rotation: rotate around the country after correct answer
-        const map = mapRef.current
-        if (map && currentQuestion.targetFeature) {
-          // Wait for flash animation to complete, then rotate
-          rotationTimeoutRef.current = window.setTimeout(() => {
-            const currentBearing = map.getBearing()
-            map.rotateTo({
-              bearing: currentBearing + 360,
-              duration: 6000, // 6 second rotation
-              easing: (t) => t // Linear rotation
-            })
-            rotationTimeoutRef.current = null
-          }, 1000) // Start rotation 1 second after answer
-        }
+        // Disabled to prevent conflicts with new question animations
+        // const map = mapRef.current
+        // if (map && currentQuestion.targetFeature) {
+        //   // Wait for flash animation to complete, then rotate
+        //   rotationTimeoutRef.current = window.setTimeout(() => {
+        //     const currentBearing = map.getBearing()
+        //     try {
+        //       map.rotateTo({
+        //         bearing: currentBearing + 360,
+        //         duration: 6000, // 6 second rotation
+        //         easing: (t) => t // Linear rotation
+        //       })
+        //     } catch (error) {
+        //       console.warn('Rotation skipped:', error)
+        //     }
+        //     rotationTimeoutRef.current = null
+        //   }, 1000) // Start rotation 1 second after answer
+        // }
       }
       setCompletedQuestions(prev => [...prev, `${currentQuestion.type}-${correctCca3}`])
       
@@ -2240,26 +2381,41 @@ function buildNextQuestion(args: {
     'region_builder',
   ]
 
-  // Filter types by level
+  // Filter types by level - Gradual difficulty progression
   const levelTypes: QuestionType[] = []
 
-  // Level 1+: Intro with Visuals
+  // Level 1-3: Intro with Visuals (Easiest)
   levelTypes.push('flag_match', 'map_tap')
 
-  // Level 4+: Shapes & Neighbors
+  // Level 4-5: Shapes & Neighbors (Visual + Basic Geography)
   if (args.level >= 4) levelTypes.push('silhouette_mcq', 'neighbor_mcq')
 
-  // Level 6+: Capitals (Shifted from L1)
+  // Level 6-7: Capitals (Common Knowledge)
   if (args.level >= 6) levelTypes.push('capital_mcq')
 
-  // Level 8+: Detail & Characteristics (Data)
+  // Level 8-9: Basic Characteristics (Easy Data Questions)
   if (args.level >= 8) {
-    levelTypes.push('population_pair', 'area_pair', 'city_mcq', 'currency_mcq', 'landlocked_mcq', 'region_mcq', 'population_tier', 'peak_mcq', 'range_mcq')
+    levelTypes.push('population_pair', 'area_pair', 'city_mcq', 'currency_mcq', 'landlocked_mcq', 'population_tier')
   }
 
-  // Level 12+: Cultural & Hydrography
+  // Level 10-11: Physical Geography - Large Countries Only (Peaks)
+  if (args.level >= 10) {
+    levelTypes.push('peak_mcq')
+  }
+
+  // Level 12-13: Cultural & Hydrography (Moderate Difficulty)
   if (args.level >= 12) {
     levelTypes.push('river_mcq', 'language_mcq', 'population_more_than')
+  }
+
+  // Level 14-15: Physical Geography - Mountain Ranges (Harder)
+  if (args.level >= 14) {
+    levelTypes.push('range_mcq')
+  }
+
+  // Level 15+: Trivia & Knowledge
+  if (args.level >= 15) {
+    levelTypes.push('flag_colors_mcq', 'gdp_tier', 'economy_exports_mcq', 'unesco_mcq')
   }
 
   // Level 16+: High Logic & Complexity
@@ -2267,13 +2423,13 @@ function buildNextQuestion(args: {
     levelTypes.push('subregion_outlier', 'neighbor_count_mcq', 'population_rank')
   }
 
+  // Level 18+: Physical Regions (Very Hard - Small Countries)
+  if (args.level >= 18) {
+    levelTypes.push('region_mcq')
+  }
+
   // Level 20+: Visual Mastery
   if (args.level >= 20) levelTypes.push('coastline_mcq', 'landmark_photo_mcq')
-
-  // Level 15+: Trivia & Knowledge
-  if (args.level >= 15) {
-    levelTypes.push('flag_colors_mcq', 'gdp_tier', 'economy_exports_mcq', 'unesco_mcq')
-  }
 
   // Level 22+: Multi-Step Puzzles
   if (args.level >= 22) {
@@ -2747,7 +2903,8 @@ function buildQuestionForType(
   if (type === 'peak_mcq') {
     const peakName = country.highestPeak?.name ?? ''
     if (!peakName) return null
-    const slicedPool = getPoolForLevel(args.pools.peakPool, args.level)
+    // Prefer larger countries at lower levels (levels 10-14)
+    const slicedPool = getPoolForLevel(args.pools.peakPool, args.level, args.level < 15)
     const { options, correctIndex } = buildOptionSet(
       slicedPool,
       country,
@@ -2768,7 +2925,8 @@ function buildQuestionForType(
   if (type === 'range_mcq') {
     const rangeName = country.mountainRanges?.[0] ?? ''
     if (!rangeName) return null
-    const slicedPool = getPoolForLevel(args.pools.rangePool, args.level)
+    // Prefer larger countries at lower levels (levels 14-16)
+    const slicedPool = getPoolForLevel(args.pools.rangePool, args.level, args.level < 17)
     const { options, correctIndex } = buildOptionSet(
       slicedPool,
       country,
@@ -2789,7 +2947,8 @@ function buildQuestionForType(
   if (type === 'region_mcq') {
     const regionName = country.physicalRegions?.[0] ?? ''
     if (!regionName) return null
-    const slicedPool = getPoolForLevel(args.pools.regionPool, args.level)
+    // Prefer larger countries at lower levels (levels 18-20)
+    const slicedPool = getPoolForLevel(args.pools.regionPool, args.level, args.level < 21)
     const { options, correctIndex } = buildOptionSet(
       slicedPool,
       country,
@@ -3023,6 +3182,8 @@ function buildQuestionForType(
   if (type === 'silhouette_mcq') {
     const slicedPool = getPoolForLevel(args.pools.mapPool, args.level)
     const { options, correctIndex, optionCca3s } = buildOptionSetForCountries(slicedPool, country)
+    const targetFeature = args.featureIndex.get(country.cca3 ?? '')
+    if (!targetFeature) return null
     return {
       id: `${type} -${country.cca3} `,
       type,
@@ -3031,6 +3192,7 @@ function buildQuestionForType(
       correctIndex,
       optionCca3s,
       targetCca3: country.cca3,
+      targetFeature,
       displayCca3s: [country.cca3],
       hideLabels: true,
     }
@@ -3289,7 +3451,11 @@ function getNextCountryForType(
   }
 
   // Slice pool based on adjusted level
-  const basePool = getPoolForLevel(pool, adjustedLevel)
+  // For difficult question types, prefer larger countries at lower levels
+  const preferLarge = (type === 'peak_mcq' && adjustedLevel < 15) ||
+                      (type === 'range_mcq' && adjustedLevel < 17) ||
+                      (type === 'region_mcq' && adjustedLevel < 21)
+  const basePool = getPoolForLevel(pool, adjustedLevel, preferLarge)
 
   // Filter out completed questions for this specific type
   let currentPool = basePool.filter(c => !args.completedQuestions.includes(`${type}-${c.cca3}`))
@@ -3310,19 +3476,39 @@ function getNextCountryForType(
   return currentPool.find((country) => country.cca3 === nextCca3) ?? currentPool[0]
 }
 
-function getPoolForLevel<T>(pool: T[], level: number): T[] {
-  // Continuous Difficulty Curve
-  // Pool size grows by 5 every level.
-  // Level 1: 25
-  // Level 8: 60 (was 130) -> smoother transition
-  // Level 50: ~270 (Full World)
-  const end = Math.min(pool.length, 20 + level * 5)
+function getPoolForLevel<T extends { area?: number; population?: number } | any>(pool: T[], level: number, preferLargeCountries: boolean = false): T[] {
+  // Slower, smoother difficulty curve
+  // Pool size grows by 4 every level (was 5)
+  // Level 1: 20
+  // Level 8: 48 (was 60) -> gentler introduction
+  // Level 15: 76
+  // Level 50: ~220 (Full World)
+  const end = Math.min(pool.length, 16 + level * 4)
 
-  // Safety Net: Keep top 10 easiest countries until Level 10
+  // Safety Net: Keep top countries until Level 12
   // Then slowly phase them out.
-  const start = level < 10 ? 0 : Math.min(pool.length - 20, (level - 10) * 2)
+  const start = level < 12 ? 0 : Math.min(pool.length - 20, (level - 12) * 2)
 
-  return pool.slice(start, end)
+  let result = pool.slice(start, end)
+
+  // For difficult question types, prefer larger countries at lower levels
+  if (preferLargeCountries && level < 15) {
+    // Sort by area (descending) and take top portion
+    // Type guard to check if items have area property
+    const hasArea = (item: any): item is { area?: number } => typeof item === 'object' && item !== null && 'area' in item
+    const sorted = [...result].sort((a, b) => {
+      const areaA = hasArea(a) ? (a.area ?? 0) : 0
+      const areaB = hasArea(b) ? (b.area ?? 0) : 0
+      return areaB - areaA
+    })
+    // At level 10-12, use top 60% of pool (larger countries)
+    // At level 13-14, use top 80% of pool
+    const ratio = level < 13 ? 0.6 : 0.8
+    const topCount = Math.max(10, Math.floor(sorted.length * ratio))
+    result = sorted.slice(0, topCount)
+  }
+
+  return result
 }
 
 function buildOptionSet(

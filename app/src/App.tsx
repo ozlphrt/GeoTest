@@ -450,6 +450,8 @@ function App() {
     handleNext()
   }
 
+  const [isProgressLoaded, setIsProgressLoaded] = useState(false)
+
   useEffect(() => {
     const saved = localStorage.getItem('geotest-progress')
     if (saved) {
@@ -487,9 +489,11 @@ function App() {
         setTheme('light')
       }
     }
+    setIsProgressLoaded(true)
   }, [])
 
   useEffect(() => {
+    if (!isProgressLoaded) return
     localStorage.setItem('geotest-progress', JSON.stringify({
       score,
       level,
@@ -504,7 +508,7 @@ function App() {
       levelStartScore
     }))
     document.body.classList.toggle('light-mode', theme === 'light')
-  }, [score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements, completedQuestions, levelStartScore])
+  }, [score, level, hearts, correctInLevel, currentStreak, theme, isMuted, mastery, achievements, completedQuestions, levelStartScore, isProgressLoaded])
 
   useEffect(() => {
     if (!notification) return
@@ -838,7 +842,19 @@ function App() {
         })
       }
 
-      if (isCorrect) {
+      if (isCorrect && correctCca3) {
+        setMastery((prev) => {
+          const nextVal = (prev[correctCca3] ?? 0) + 1
+          const next = { ...prev, [correctCca3]: nextVal }
+
+          // Mastery Achievements
+          const masteredCount = Object.values(next).filter((v: number) => v >= 1).length
+          if (masteredCount === 100) triggerAchievement('atlas100', 'World Completionist (100 Mastered)')
+          else if (masteredCount === 50) triggerAchievement('atlas50', 'Atlas Pro (50 Mastered)')
+          else if (masteredCount === 25) triggerAchievement('atlas25', 'Globe Trotter (25 Mastered)')
+
+          return next
+        })
         setCompletedQuestions(prev => [...prev, `${currentQuestion.type}-${correctCca3}`])
         const comboMult = 1 + (currentStreak * 0.2)
         const basePoints = getPointsForQuestion(currentQuestion.type)
@@ -978,15 +994,14 @@ function App() {
       '#2ecc71',
       ['==', ['feature-state', 'flash'], 'incorrect'],
       '#e74c3c',
-      isSilhouette ? '#000000' : (theme === 'dark' ? '#1a202a' : '#e1e8ed'),
+      (isSilhouette && currentQuestion?.targetCca3)
+        ? ['case', ['any', ['==', ['get', 'cca3'], currentQuestion.targetCca3], ['==', ['id'], currentQuestion.targetCca3]], '#ffffff', (theme === 'dark' ? '#1a202a' : '#e1e8ed')]
+        : (theme === 'dark' ? '#1a202a' : '#e1e8ed'),
     ])
-    map.setPaintProperty('country-borders', 'line-color',
-      isSilhouette ? '#000000' : '#2d3644'
-    )
-    map.setPaintProperty('background', 'background-color',
-      isSilhouette ? '#111' : (theme === 'dark' ? '#0b0f14' : '#f0f4f8')
-    )
-  }, [currentQuestion?.hideLabels, theme])
+    // Revert borders/background to standard theme even in silhouette mode
+    map.setPaintProperty('country-borders', 'line-color', '#2d3644')
+    map.setPaintProperty('background', 'background-color', theme === 'dark' ? '#0b0f14' : '#f0f4f8')
+  }, [currentQuestion?.hideLabels, currentQuestion?.targetCca3, theme])
 
   useEffect(() => {
     if (!currentQuestion || currentQuestion.type !== 'river_mcq') return
@@ -1305,7 +1320,7 @@ function App() {
       </div>
 
       {notification && (
-        <div className="achievement-toast animate-pop">
+        <div className="achievement-toast animate-pop-centered">
           <div className="achievement-icon">🏆</div>
           <div className="achievement-text">
             <div className="achievement-status">Achievement Unlocked!</div>
@@ -1343,11 +1358,21 @@ function App() {
             <div className="divider" />
 
             <div className="stat-group">
-              <div className="stat-label">Progress</div>
-              <div className={`stat-value accent ${isLevelUp ? 'animate-pulse' : ''} `}>
-                L.{level}
+              <div className="circular-container">
+                <svg className="circular-progress">
+                  <circle className="circular-bg" cx="22" cy="22" r="18" />
+                  <circle
+                    className={`circular-value ${isLevelUp ? 'animate-pulse' : ''} `}
+                    cx="22" cy="22" r="18"
+                    strokeDasharray="113.1"
+                    strokeDashoffset={113.1 * (1 - correctInLevel / 5)}
+                  />
+                </svg>
+                <div className="circular-text">
+                  L.{level}
+                </div>
+                <div className="circular-sub">NEXT</div>
               </div>
-              <div className="stat-sub">{correctInLevel}/5 NEXT</div>
             </div>
 
             <div className="divider" />
@@ -1479,7 +1504,7 @@ function App() {
 
               {!isMapTap && currentQuestion?.type === 'map_tap' && (
                 <div className="map-instruction">
-                  Tap to answer.
+                  Tap on the map to answer
                 </div>
               )}
 
@@ -1719,20 +1744,25 @@ function buildNextQuestion(args: {
     'economy_exports_mcq',
     'unesco_mcq',
     'landmark_photo_mcq',
+    'silhouette_mcq',
+    'coastline_mcq',
   ]
 
   // Filter types by level
   const levelTypes: QuestionType[] = []
 
-  // Level 1+: Intro
-  levelTypes.push('flag_match', 'capital_mcq')
+  // Level 1+: Intro with Visuals
+  levelTypes.push('flag_match', 'map_tap')
 
-  // Level 4+: Geography & Positioning
-  if (args.level >= 4) levelTypes.push('map_tap', 'neighbor_mcq', 'population_pair', 'area_pair')
+  // Level 4+: Shapes & Neighbors
+  if (args.level >= 4) levelTypes.push('silhouette_mcq', 'neighbor_mcq')
 
-  // Level 8+: Detail & Characteristics
+  // Level 6+: Capitals (Shifted from L1)
+  if (args.level >= 6) levelTypes.push('capital_mcq')
+
+  // Level 8+: Detail & Characteristics (Data)
   if (args.level >= 8) {
-    levelTypes.push('city_mcq', 'currency_mcq', 'landlocked_mcq', 'region_mcq', 'population_tier')
+    levelTypes.push('population_pair', 'area_pair', 'city_mcq', 'currency_mcq', 'landlocked_mcq', 'region_mcq', 'population_tier', 'peak_mcq', 'range_mcq')
   }
 
   // Level 12+: Cultural & Hydrography
@@ -1746,7 +1776,7 @@ function buildNextQuestion(args: {
   }
 
   // Level 20+: Visual Mastery
-  if (args.level >= 20) levelTypes.push('silhouette_mcq', 'coastline_mcq', 'landmark_photo_mcq')
+  if (args.level >= 20) levelTypes.push('coastline_mcq', 'landmark_photo_mcq')
 
   // Level 15+: Trivia & Knowledge
   if (args.level >= 15) {
@@ -2445,34 +2475,18 @@ function getNextCountryForType(
 }
 
 function getPoolForLevel<T>(pool: T[], level: number): T[] {
-  let start = 0
-  let end = pool.length
+  // Continuous Difficulty Curve
+  // Pool size grows by 5 every level.
+  // Level 1: 25
+  // Level 8: 60 (was 130) -> smoother transition
+  // Level 50: ~270 (Full World)
+  const end = Math.min(pool.length, 20 + level * 5)
 
-  if (level <= 3) {
-    // Intro: Tight set of superstars
-    start = 0
-    end = 20
-  } else if (level <= 7) {
-    // Early: Phasing in region leaders
-    start = 10
-    end = 55
-  } else if (level <= 15) {
-    // Mid: Canada/USA/China are gone. Testing middle-weights.
-    start = 40
-    end = 130
-  } else if (level <= 30) {
-    // Expert: Deep cuts, islands, small states.
-    start = 100
-    end = 210
-  } else {
-    // Master: True random from the whole world.
-    start = 0
-    end = pool.length
-  }
+  // Safety Net: Keep top 10 easiest countries until Level 10
+  // Then slowly phase them out.
+  const start = level < 10 ? 0 : Math.min(pool.length - 20, (level - 10) * 2)
 
-  const s = Math.max(0, Math.min(start, pool.length - 10))
-  const e = Math.max(s + 10, Math.min(end, pool.length))
-  return pool.slice(s, e)
+  return pool.slice(start, end)
 }
 
 function buildOptionSet(

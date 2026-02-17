@@ -18,6 +18,71 @@ a:focus,
   z-index: 1000;
 }
 
+/* Scoreboard TV */
+.scoreboard {
+  position: absolute;
+  top: 40px;
+  right: 40px;
+  background: var(--bg-scoreboard);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  padding: 20px 32px;
+  border-radius: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 20px;
+  z-index: 10;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow:
+    0 10px 50px var(--shadow-main),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+/* Circular Progress TV */
+.circular-progress {
+  transform: rotate(-90deg);
+  width: 80px;
+  height: 80px;
+}
+
+.circular-progress circle {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease;
+}
+
+.circular-bg {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+
+.circular-value {
+  stroke: var(--accent-blue);
+  filter: drop-shadow(0 0 4px var(--accent-blue));
+}
+
+.circular-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+}
+
+.circular-text {
+  position: absolute;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-main);
+  text-align: center;
+  line-height: 1;
+}
+
 /* Map Reticle (Crosshair) */
 .map-reticle {
   position: absolute;

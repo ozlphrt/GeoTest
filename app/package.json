@@ -1,22 +1,25 @@
 {
   "name": "geotest_pwa",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
     "preview": "vite preview",
-    "data:fetch": "node scripts/fetch_datasets.mjs"
+    "data:fetch": "node scripts/fetch_datasets.mjs",
+    "build:tv": "vite build && powershell -Command \"Copy-Item -Path dist/index_tv.html -Destination dist/index.html -Force\""
   },
   "dependencies": {
+    "@capacitor/core": "^8.0.2",
     "maplibre-gl": "^5.17.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "vite-plugin-pwa": "^1.2.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/cli": "^8.0.2",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",

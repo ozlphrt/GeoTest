@@ -86,33 +86,91 @@ body.light-mode .app::before {
 .scoreboard {
   position: absolute;
   top: 12px;
-  left: 45%;
+  left: 50%;
   transform: translateX(-50%);
   width: max-content;
   max-width: calc(100vw - 40px);
   background: var(--bg-scoreboard);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
-  padding: 8px 16px;
-  border-radius: 20px;
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  padding: 8px 20px;
+  border-radius: 24px;
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
   z-index: 10;
-  border: 1px solid var(--border-scoreboard);
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow:
     0 10px 40px var(--shadow-main),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
   transition: all 0.3s ease;
 }
 
 body.light-mode .scoreboard {
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.65);
   box-shadow:
-    0 10px 40px rgba(30, 41, 59, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+    0 10px 30px rgba(30, 41, 59, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* Circular Progress */
+.circular-progress {
+  transform: rotate(-90deg);
+  width: 44px;
+  height: 44px;
+}
+
+.circular-progress circle {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease;
+}
+
+.circular-bg {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+
+.circular-value {
+  stroke: var(--accent-blue);
+  filter: drop-shadow(0 0 2px var(--accent-blue));
+}
+
+body.light-mode .circular-bg {
+  stroke: rgba(0, 0, 0, 0.06);
+}
+
+.circular-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+}
+
+.circular-text {
+  position: absolute;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--text-main);
+  text-align: center;
+  line-height: 1;
+}
+
+.circular-sub {
+  position: absolute;
+  bottom: -14px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .stat-group {
@@ -754,6 +812,22 @@ body.light-mode .compact-flag {
   }
 }
 
+@keyframes popInCentered {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) translateY(0);
+  }
+}
+
+.animate-pop-centered {
+  animation: popInCentered 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
 .text-tick {
   display: inline-block;
   transition: all 0.2s ease;
@@ -888,8 +962,9 @@ body.light-mode .compact-flag {
 /* Achievement Toast */
 .achievement-toast {
   position: absolute;
-  bottom: 24px;
-  left: 24px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 99;
   background: var(--bg-scoreboard);
   -webkit-backdrop-filter: blur(20px) saturate(180%);

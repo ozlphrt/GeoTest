@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GeoTestTV</string>
+    <string name="title_activity_main">GeoTestTV</string>
+    <string name="package_name">com.geotest.tv</string>
+    <string name="custom_url_scheme">com.geotest.tv</string>
+</resources>

@@ -24,7 +24,6 @@ type QuestionType =
   | 'language_mcq'
   | 'population_pair'
   | 'area_pair'
-  | 'landlocked_mcq'
   | 'peak_mcq'
   | 'range_mcq'
   | 'region_mcq'
@@ -32,7 +31,6 @@ type QuestionType =
   | 'neighbor_count_mcq'
   | 'population_rank'
   | 'silhouette_mcq'
-  | 'coastline_mcq'
   | 'flag_colors_mcq'
   | 'unesco_mcq'
   | 'landmark_photo_mcq'
@@ -379,7 +377,6 @@ function App() {
     language_mcq: [],
     population_pair: [],
     area_pair: [],
-    landlocked_mcq: [],
     peak_mcq: [],
     range_mcq: [],
     region_mcq: [],
@@ -387,7 +384,6 @@ function App() {
     neighbor_count_mcq: [],
     population_rank: [],
     silhouette_mcq: [],
-    coastline_mcq: [],
     flag_colors_mcq: [],
     unesco_mcq: [],
     landmark_photo_mcq: [],
@@ -707,7 +703,7 @@ function App() {
             id: 'background',
             type: 'background',
             paint: {
-              'background-color': theme === 'dark' ? '#0b0f14' : '#f0f4f8',
+              'background-color': theme === 'dark' ? '#000103' : '#ffffff',
             },
           },
         ],
@@ -735,7 +731,7 @@ function App() {
             '#2ecc71',
             ['==', ['feature-state', 'flash'], 'incorrect'],
             '#e74c3c',
-            theme === 'dark' ? '#1a202a' : '#e1e8ed',
+            theme === 'dark' ? '#2d3644' : '#475569',
           ],
           'fill-opacity': [
             'case',
@@ -758,7 +754,7 @@ function App() {
             '#38d27a',
             ['==', ['feature-state', 'flash'], 'incorrect'],
             '#ff5a5a',
-            theme === 'dark' ? '#2d3644' : '#b0c4de',
+            theme === 'dark' ? '#64748b' : '#020617',
           ],
           'line-width': [
             'case',
@@ -808,7 +804,7 @@ function App() {
         type: 'line',
         source: 'countries',
         paint: {
-          'line-color': theme === 'dark' ? '#2d3644' : '#cbd5e1',
+          'line-color': theme === 'dark' ? '#64748b' : '#020617',
           'line-width': 1,
         },
       })
@@ -984,14 +980,14 @@ function App() {
     // Don't stop animations - let MapLibre handle transitions naturally
     // MapLibre's flyTo will smoothly transition from current state
     const questionId = currentQuestion.id
-    
+
     // Small delay to batch rapid question changes and ensure map is ready
     const animationTimeout = setTimeout(() => {
       const currentMap = mapRef.current
       if (!currentMap || !currentQuestion || currentQuestion.id !== questionId || !currentQuestion.targetFeature) {
         return
       }
-      
+
       // Ensure map is in a valid state before animating
       try {
         // Check if map is loaded and ready
@@ -1001,23 +997,22 @@ function App() {
       } catch (e) {
         return
       }
-      
+
       try {
         // Recalculate values to ensure they're fresh
         const currentIsMapTap = currentQuestion.type === 'map_tap'
-        const currentIsCoastline = currentQuestion.type === 'coastline_mcq'
         const currentIsSilhouette = currentQuestion.type === 'silhouette_mcq'
-        let currentZoom = currentIsCoastline ? 2.5 : (currentIsMapTap ? 0.85 : (currentIsSilhouette ? 2.0 : 1.2))
+        let currentZoom = currentIsMapTap ? 0.85 : (currentIsSilhouette ? 2.0 : 1.2)
         const currentCenter = bboxCenter(currentQuestion.targetFeature.bbox)
         const currentBearing = (Math.random() - 0.5) * 20
-        
+
         const currentTargetCca3 = currentQuestion.targetCca3
         const currentCountry = currentTargetCca3 ? countryPools.countriesByCca3.get(currentTargetCca3) ?? null : null
         const currentCountryType = getCountryType(currentCountry)
-        
+
         let currentPitch: number
-        if (currentIsCoastline) {
-          currentPitch = 0
+        if (false) {
+          // kept for structure
         } else {
           switch (currentCountryType) {
             case 'island':
@@ -1041,7 +1036,7 @@ function App() {
 
         // Validate values before calling flyTo
         if (!currentCenter || !isFinite(currentCenter[0]) || !isFinite(currentCenter[1]) ||
-            !isFinite(currentZoom) || !isFinite(currentPitch) || !isFinite(currentBearing)) {
+          !isFinite(currentZoom) || !isFinite(currentPitch) || !isFinite(currentBearing)) {
           console.warn('Invalid camera parameters, skipping animation')
           return
         }
@@ -1080,9 +1075,9 @@ function App() {
 
     // Skip if camera movement is handled by the flyTo effect (questions with targetFeature)
     // This prevents conflicts between flyTo and fitBounds
-    if (currentQuestion.targetFeature && 
-        currentQuestion.type !== 'journey_puzzle' && 
-        currentQuestion.type !== 'region_builder') {
+    if (currentQuestion.targetFeature &&
+      currentQuestion.type !== 'journey_puzzle' &&
+      currentQuestion.type !== 'region_builder') {
       // Camera movement handled by flyTo effect above
       // Just set focus states for highlighting
       const displayCca3s = (currentQuestion.displayCca3s ?? []).filter(Boolean)
@@ -1100,7 +1095,7 @@ function App() {
         map.setFeatureState({ source: 'countries', id: cca3 }, { focus: true })
         focusedIdsRef.current.push(cca3)
       }
-      
+
       const bboxes = pathCca3s
         .map((cca3) => featureIndex.get(cca3)?.bbox)
         .filter(Boolean) as [number, number, number, number][]
@@ -1127,7 +1122,7 @@ function App() {
         map.setFeatureState({ source: 'countries', id: cca3 }, { focus: true })
         focusedIdsRef.current.push(cca3)
       }
-      
+
       const bboxes = displayCca3s
         .map((cca3) => featureIndex.get(cca3)?.bbox)
         .filter(Boolean) as [number, number, number, number][]
@@ -1161,7 +1156,7 @@ function App() {
       .filter(Boolean) as [number, number, number, number][]
     if (!bboxes.length) return
     const merged = bboxes.reduce(mergeBBoxes)
-    
+
     requestAnimationFrame(() => {
       if (!map || !currentQuestion) return
       map.fitBounds(
@@ -1177,10 +1172,10 @@ function App() {
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-    
+
     const isSilhouette = currentQuestion?.hideLabels
     const targetCca3 = currentQuestion?.targetCca3
-    
+
     // Clear all silhouette states first
     const allFocusedIds = [...focusedIdsRef.current]
     if (targetCca3 && !allFocusedIds.includes(targetCca3)) {
@@ -1193,7 +1188,7 @@ function App() {
         // Ignore errors for invalid IDs
       }
     }
-    
+
     // Set silhouette state for the target country, then update paint property
     if (isSilhouette && targetCca3) {
       try {
@@ -1202,11 +1197,11 @@ function App() {
         console.warn('Failed to set silhouette state:', e)
       }
     }
-    
+
     // Use requestAnimationFrame to ensure state is set before updating paint
     requestAnimationFrame(() => {
       if (!map || !mapLoaded) return
-      
+
       map.setPaintProperty('country-fill', 'fill-color', [
         'case',
         ['==', ['feature-state', 'flash'], 'correct'],
@@ -1253,7 +1248,7 @@ function App() {
       setShowShimmer(false)
       return
     }
-    
+
     setShowShimmer(false) // Reset shimmer state
     const timer = setTimeout(() => {
       setShowShimmer(true)
@@ -1262,7 +1257,7 @@ function App() {
         setShowShimmer(false)
       }, 1500)
     }, 1000) // 1 second delay
-    
+
     return () => {
       clearTimeout(timer)
     }
@@ -1271,26 +1266,26 @@ function App() {
   const handleOptionSelect = (index: number, event?: React.MouseEvent<HTMLButtonElement>) => {
     if (processingRef.current) return
     if (!currentQuestion) return
-    
+
     // Handle region_builder (multi-select)
     if (currentQuestion.type === 'region_builder') {
       const selectedCca3 = currentQuestion.optionCca3s?.[index]
       if (!selectedCca3) return
-      
+
       const currentSelected = currentQuestion.selectedCountries || []
       const isSelected = currentSelected.includes(selectedCca3)
-      
+
       const newSelected = isSelected
         ? currentSelected.filter(c => c !== selectedCca3)
         : [...currentSelected, selectedCca3]
-      
+
       setCurrentQuestion({
         ...currentQuestion,
         selectedCountries: newSelected
       })
       return // Don't process answer yet, wait for submit
     }
-    
+
     if (currentQuestion.correctIndex === undefined) return
     if (event) event.currentTarget?.blur()
     processingRef.current = true
@@ -1316,7 +1311,7 @@ function App() {
 
           return next
         })
-        
+
         // Post-answer rotation: rotate around the country after correct answer
         // Disabled to prevent conflicts with new question animations
         // const map = mapRef.current
@@ -1338,7 +1333,7 @@ function App() {
         // }
       }
       setCompletedQuestions(prev => [...prev, `${currentQuestion.type}-${correctCca3}`])
-      
+
       // Update performance stats with response time
       const responseTime = questionStartTimeRef.current > 0 ? Date.now() - questionStartTimeRef.current : 0
       setPerformanceStats(prev => {
@@ -1352,7 +1347,7 @@ function App() {
           }
         }
       })
-      
+
       playGameSound('correct', isMuted)
       const basePoints = getPointsForQuestion(currentQuestion.type)
       const points = Math.round(basePoints * (1 + currentStreak * 0.1) * (1 + (level - 1) * 0.2))
@@ -1438,7 +1433,7 @@ function App() {
           }
         }
       })
-      
+
       setCorrectInLevel(0)
       setShakeIndex(index)
       playGameSound('incorrect', isMuted)
@@ -1454,7 +1449,7 @@ function App() {
     }
 
     const selectedCca3 = currentQuestion.optionCca3s?.[index]
-    
+
     // Handle journey_puzzle: flash the path
     if (currentQuestion.type === 'journey_puzzle' && mapRef.current && currentQuestion.journeyPath) {
       const pathCca3s = currentQuestion.journeyPath.filter(Boolean)
@@ -1537,19 +1532,19 @@ function App() {
   const handleRegionBuilderSubmit = () => {
     if (!currentQuestion || currentQuestion.type !== 'region_builder') return
     if (processingRef.current) return
-    
+
     const selected = currentQuestion.selectedCountries || []
     const correct = currentQuestion.correctCountries || []
-    
+
     // Check if all correct are selected and no incorrect ones
     const selectedSet = new Set(selected)
     const correctSet = new Set(correct)
     const allCorrectSelected = correct.every(c => selectedSet.has(c))
     const noIncorrectSelected = selected.every(s => correctSet.has(s))
     const isCorrect = allCorrectSelected && noIncorrectSelected && selected.length === correct.length
-    
+
     processingRef.current = true
-    
+
     // Process answer similar to regular questions
     if (isCorrect) {
       // Award mastery for all correct countries
@@ -1561,9 +1556,9 @@ function App() {
           })
         }
       })
-      
+
       setCompletedQuestions(prev => [...prev, `${currentQuestion.type}-${correct.join(',')}`])
-      
+
       const responseTime = questionStartTimeRef.current > 0 ? Date.now() - questionStartTimeRef.current : 0
       setPerformanceStats(prev => {
         const current = prev[currentQuestion.type] || { correct: 0, total: 0, totalResponseTime: 0 }
@@ -1576,12 +1571,12 @@ function App() {
           }
         }
       })
-      
+
       playGameSound('correct', isMuted)
       const basePoints = getPointsForQuestion(currentQuestion.type)
       const points = Math.round(basePoints * (1 + currentStreak * 0.1) * (1 + (level - 1) * 0.2))
       setScore((s) => s + points)
-      
+
       // Flash correct countries
       if (mapRef.current && correct.length > 0) {
         correct.forEach(cca3 => {
@@ -1597,7 +1592,7 @@ function App() {
           })
         }, 1000)
       }
-      
+
       nextTimeoutRef.current = window.setTimeout(() => {
         handleNext()
         nextTimeoutRef.current = null
@@ -1612,7 +1607,7 @@ function App() {
         }
         return next
       })
-      
+
       // Flash incorrect selections
       if (mapRef.current) {
         selected.forEach(cca3 => {
@@ -1634,13 +1629,13 @@ function App() {
           })
         }, 2000)
       }
-      
+
       nextTimeoutRef.current = window.setTimeout(() => {
         handleNext()
         nextTimeoutRef.current = null
       }, 3000)
     }
-    
+
     processingRef.current = false
   }
   const flagSrc = resolvePublicAsset(
@@ -1967,7 +1962,7 @@ function App() {
                         <input
                           type="checkbox"
                           checked={!!isSelected}
-                          onChange={() => {}}
+                          onChange={() => { }}
                           readOnly
                         />
                         <span>{option}</span>
@@ -2354,7 +2349,6 @@ function buildNextQuestion(args: {
     'language_mcq',
     'population_pair',
     'area_pair',
-    'landlocked_mcq',
     'peak_mcq',
     'range_mcq',
     'region_mcq',
@@ -2368,7 +2362,6 @@ function buildNextQuestion(args: {
     'unesco_mcq',
     'landmark_photo_mcq',
     'silhouette_mcq',
-    'coastline_mcq',
     'journey_puzzle',
     'region_builder',
   ]
@@ -2387,7 +2380,7 @@ function buildNextQuestion(args: {
 
   // Level 8-9: Basic Characteristics (Easy Data Questions)
   if (args.level >= 8) {
-    levelTypes.push('population_pair', 'area_pair', 'city_mcq', 'currency_mcq', 'landlocked_mcq', 'population_tier')
+    levelTypes.push('population_pair', 'area_pair', 'city_mcq', 'currency_mcq', 'population_tier')
   }
 
   // Level 10-11: Physical Geography - Large Countries Only (Peaks)
@@ -2421,7 +2414,7 @@ function buildNextQuestion(args: {
   }
 
   // Level 20+: Visual Mastery
-  if (args.level >= 20) levelTypes.push('coastline_mcq', 'landmark_photo_mcq')
+  if (args.level >= 20) levelTypes.push('landmark_photo_mcq')
 
   // Level 22+: Multi-Step Puzzles
   if (args.level >= 22) {
@@ -2458,10 +2451,10 @@ function findJourneyPath(
   maxDepth: number = 4
 ): string[] | null {
   if (start.cca3 === end.cca3) return null
-  
+
   // Build path: start -> intermediate countries -> end
   const path: string[] = [start.cca3!]
-  
+
   let current = start
   for (const target of intermediate) {
     const segment = findPathBetween(current, target, countriesByCca3, maxDepth)
@@ -2470,12 +2463,12 @@ function findJourneyPath(
     path.push(...segment.slice(1))
     current = target
   }
-  
+
   // Final segment to end
   const finalSegment = findPathBetween(current, end, countriesByCca3, maxDepth)
   if (!finalSegment || finalSegment.length === 0) return null
   path.push(...finalSegment.slice(1))
-  
+
   return path
 }
 
@@ -2487,30 +2480,30 @@ function findPathBetween(
   maxDepth: number = 3
 ): string[] | null {
   if (start.cca3 === end.cca3) return [start.cca3!]
-  
+
   const queue: { country: CountryMeta; path: string[] }[] = [{ country: start, path: [start.cca3!] }]
   const visited = new Set<string>([start.cca3!])
-  
+
   while (queue.length > 0 && queue[0].path.length <= maxDepth) {
     const { country, path } = queue.shift()!
-    
+
     for (const borderCode of country.borders || []) {
       if (visited.has(borderCode)) continue
       visited.add(borderCode)
-      
+
       const neighbor = countriesByCca3.get(borderCode)
       if (!neighbor) continue
-      
+
       const newPath = [...path, borderCode]
-      
+
       if (borderCode === end.cca3) {
         return newPath
       }
-      
+
       queue.push({ country: neighbor, path: newPath })
     }
   }
-  
+
   return null
 }
 
@@ -2557,7 +2550,7 @@ function buildQuestionForType(
 
     const shuffled = shuffle(countriesWithBorders)
     const start = shuffled[0]
-    
+
     // Try to find a 2-3 step journey
     let end: CountryMeta | null = null
     let intermediate: CountryMeta[] = []
@@ -2568,12 +2561,12 @@ function buildQuestionForType(
       if (candidateEnd.cca3 === start.cca3) continue
 
       // Try with 1 intermediate country
-      const candidateIntermediate = shuffled.filter(c => 
-        c.cca3 !== start.cca3 && 
+      const candidateIntermediate = shuffled.filter(c =>
+        c.cca3 !== start.cca3 &&
         c.cca3 !== candidateEnd.cca3 &&
         (c.borders?.length ?? 0) >= 2
       )
-      
+
       if (candidateIntermediate.length > 0) {
         const inter = candidateIntermediate[0]
         journeyPath = findJourneyPath(start, candidateEnd, [inter], args.pools.countriesByCca3, 4)
@@ -2599,8 +2592,8 @@ function buildQuestionForType(
     // Build options: correct answer + distractors
     const optionCandidates = [{ name: end.name, cca3: end.cca3 }]
     const excludedCca3s = new Set([start.cca3, end.cca3, ...intermediate.map(i => i.cca3)])
-    
-    const distractors = shuffle(args.pools.neighborPool.filter(c => 
+
+    const distractors = shuffle(args.pools.neighborPool.filter(c =>
       !excludedCca3s.has(c.cca3) &&
       c.region === start.region // Same region for difficulty
     )).slice(0, 3)
@@ -2642,16 +2635,16 @@ function buildQuestionForType(
 
     const targetRegion = shuffle(regionArray)[0]
     const regionCountries = args.pools.countries.filter(c => c.region === targetRegion)
-    
+
     if (regionCountries.length < 3) return null
-    
+
     // Use a subset (3-6 countries) for the question
     const questionSize = Math.min(6, Math.max(3, Math.floor(regionCountries.length * 0.4)))
     const correctCountries = shuffle(regionCountries).slice(0, questionSize)
     const correctCca3s = correctCountries.map(c => c.cca3!).filter(Boolean)
 
     // Build distractors from other regions (same number as correct)
-    const distractors = shuffle(args.pools.countries.filter(c => 
+    const distractors = shuffle(args.pools.countries.filter(c =>
       c.region !== targetRegion &&
       !correctCca3s.includes(c.cca3!)
     )).slice(0, questionSize)
@@ -2797,19 +2790,20 @@ function buildQuestionForType(
   }
 
   if (type === 'currency_mcq') {
-    const currencyCode = country.currencies?.[0]?.code ?? ''
-    if (!currencyCode) return null
+    const currencyName = country.currencies?.[0]?.name ?? ''
+    if (!currencyName) return null
+    const simplifiedName = getSimplifiedCurrencyName(currencyName)
     const slicedPool = getPoolForLevel(args.pools.currencyPool, args.level)
     const { options, correctIndex } = buildOptionSet(
       slicedPool,
       country,
-      (item) => item.currencies?.[0]?.code ?? '',
-      currencyCode,
+      (item) => getSimplifiedCurrencyName(item.currencies?.[0]?.name ?? ''),
+      simplifiedName,
     )
     return {
-      id: `${type} -${country.cca3} `,
+      id: `${type}-${country.cca3}`,
       type,
-      prompt: `Currency code for ${country.name} ? `,
+      prompt: `Currency of ${country.name}?`,
       options,
       correctIndex,
       targetCca3: country.cca3,
@@ -2880,17 +2874,6 @@ function buildQuestionForType(
     }
   }
 
-  if (type === 'landlocked_mcq') {
-    return {
-      id: `${type} -${country.cca3} `,
-      type,
-      prompt: `Is ${country.name} landlocked or coastal ? `,
-      options: ['Landlocked', 'Coastal'],
-      correctIndex: country.landlocked ? 0 : 1,
-      targetCca3: country.cca3,
-      displayCca3s: [country.cca3],
-    }
-  }
 
   if (type === 'peak_mcq') {
     const peakName = country.highestPeak?.name ?? ''
@@ -3190,22 +3173,6 @@ function buildQuestionForType(
     }
   }
 
-  if (type === 'coastline_mcq') {
-    const targetFeature = args.featureIndex.get(country.cca3 ?? '')
-    if (!targetFeature) return null
-    const slicedPool = getPoolForLevel(args.pools.countries, args.level)
-    const { options, correctIndex } = buildOptionSetForCountries(slicedPool, country)
-    return {
-      id: `${type} -${country.cca3} `,
-      type,
-      prompt: `Which island or coastline is shown here ? `,
-      options,
-      correctIndex,
-      targetCca3: country.cca3,
-      displayCca3s: [country.cca3],
-      targetFeature,
-    }
-  }
 
   if (type === 'flag_colors_mcq') {
     const hasThree = [
@@ -3230,7 +3197,7 @@ function buildQuestionForType(
 
     const shuffled = shuffle(countriesWithBorders)
     const start = shuffled[0]
-    
+
     // Try to find a 2-3 step journey
     let end: CountryMeta | null = null
     let intermediate: CountryMeta[] = []
@@ -3241,12 +3208,12 @@ function buildQuestionForType(
       if (candidateEnd.cca3 === start.cca3) continue
 
       // Try with 1 intermediate country
-      const candidateIntermediate = shuffled.filter(c => 
-        c.cca3 !== start.cca3 && 
+      const candidateIntermediate = shuffled.filter(c =>
+        c.cca3 !== start.cca3 &&
         c.cca3 !== candidateEnd.cca3 &&
         (c.borders?.length ?? 0) >= 2
       )
-      
+
       if (candidateIntermediate.length > 0) {
         const inter = candidateIntermediate[0]
         journeyPath = findJourneyPath(start, candidateEnd, [inter], args.pools.countriesByCca3, 4)
@@ -3272,8 +3239,8 @@ function buildQuestionForType(
     // Build options: correct answer + distractors
     const optionCandidates = [{ name: end.name, cca3: end.cca3 }]
     const excludedCca3s = new Set([start.cca3, end.cca3, ...intermediate.map(i => i.cca3)])
-    
-    const distractors = shuffle(args.pools.neighborPool.filter(c => 
+
+    const distractors = shuffle(args.pools.neighborPool.filter(c =>
       !excludedCca3s.has(c.cca3) &&
       c.region === start.region // Same region for difficulty
     )).slice(0, 3)
@@ -3315,16 +3282,16 @@ function buildQuestionForType(
 
     const targetRegion = shuffle(regionArray)[0]
     const regionCountries = args.pools.countries.filter(c => c.region === targetRegion)
-    
+
     if (regionCountries.length < 3) return null
-    
+
     // Use a subset (3-6 countries) for the question
     const questionSize = Math.min(6, Math.max(3, Math.floor(regionCountries.length * 0.4)))
     const correctCountries = shuffle(regionCountries).slice(0, questionSize)
     const correctCca3s = correctCountries.map(c => c.cca3!).filter(Boolean)
 
     // Build distractors from other regions (same number as correct)
-    const distractors = shuffle(args.pools.countries.filter(c => 
+    const distractors = shuffle(args.pools.countries.filter(c =>
       c.region !== targetRegion &&
       !correctCca3s.includes(c.cca3!)
     )).slice(0, questionSize)
@@ -3407,23 +3374,21 @@ function getNextCountryForType(
                       ? args.pools.populationPool
                       : type === 'area_pair'
                         ? args.pools.areaPool
-                        : type === 'landlocked_mcq'
-                          ? args.pools.landlockedPool
-                          : type === 'peak_mcq'
-                            ? args.pools.peakPool
-                            : type === 'range_mcq'
-                              ? args.pools.rangePool
-                              : type === 'region_mcq' || type === 'subregion_outlier' || type === 'region_builder'
-                                ? args.pools.regionPool
-                                : type === 'unesco_mcq'
-                                  ? args.pools.unescoPool
-                                  : type === 'economy_exports_mcq'
-                                    ? args.pools.exportsPool
-                                    : type === 'gdp_tier'
-                                      ? args.pools.gdpPool
-                                      : type === 'landmark_photo_mcq'
-                                        ? args.pools.landmarkPool
-                                        : args.pools.countries
+                        : type === 'peak_mcq'
+                          ? args.pools.peakPool
+                          : type === 'range_mcq'
+                            ? args.pools.rangePool
+                            : type === 'region_mcq' || type === 'subregion_outlier' || type === 'region_builder'
+                              ? args.pools.regionPool
+                              : type === 'unesco_mcq'
+                                ? args.pools.unescoPool
+                                : type === 'economy_exports_mcq'
+                                  ? args.pools.exportsPool
+                                  : type === 'gdp_tier'
+                                    ? args.pools.gdpPool
+                                    : type === 'landmark_photo_mcq'
+                                      ? args.pools.landmarkPool
+                                      : args.pools.countries
   if (!pool.length) return null
 
   // Adaptive difficulty: adjust level based on performance
@@ -3445,8 +3410,8 @@ function getNextCountryForType(
   // Slice pool based on adjusted level
   // For difficult question types, prefer larger countries at lower levels
   const preferLarge = (type === 'peak_mcq' && adjustedLevel < 15) ||
-                      (type === 'range_mcq' && adjustedLevel < 17) ||
-                      (type === 'region_mcq' && adjustedLevel < 21)
+    (type === 'range_mcq' && adjustedLevel < 17) ||
+    (type === 'region_mcq' && adjustedLevel < 21)
   const basePool = getPoolForLevel(pool, adjustedLevel, preferLarge)
 
   // Filter out completed questions for this specific type
@@ -3596,6 +3561,32 @@ function buildOptionSetForCountries(pool: CountryMeta[], correct: CountryMeta) {
   return { options: finalOptions, correctIndex, optionCca3s }
 }
 
+function getSimplifiedCurrencyName(name: string): string {
+  const n = name.toLowerCase()
+  if (n.includes('dollar')) return 'Dollars'
+  if (n.includes('euro')) return 'Euros'
+  if (n.includes('pound')) return 'Pounds'
+  if (n.includes('yuan') || n.includes('renminbi')) return 'Yuan'
+  if (n.includes('yen')) return 'Yen'
+  if (n.includes('rupee')) return 'Rupees'
+  if (n.includes('franc')) return 'Francs'
+  if (n.includes('peso')) return 'Pesos'
+  if (n.includes('dinar')) return 'Dinars'
+  if (n.includes('dirham')) return 'Dirhams'
+  if (n.includes('krone') || n.includes('krona')) return 'Kroner'
+  if (n.includes('riyal') || n.includes('rial')) return 'Riyals'
+  if (n.includes('ruble') || n.includes('rouble')) return 'Rubles'
+  if (n.includes('shilling')) return 'Shillings'
+  if (n.includes('won')) return 'Won'
+
+  // Pluralize last word of the name if not matched above
+  const words = name.trim().split(' ')
+  const lastWord = words[words.length - 1]
+  if (lastWord.toLowerCase().endsWith('s')) return lastWord
+  return lastWord + 's'
+}
+
+
 function shuffle<T>(items: T[]) {
   const next = [...items]
   for (let i = next.length - 1; i > 0; i -= 1) {
@@ -3624,22 +3615,18 @@ function getPointsForQuestion(type: QuestionType): number {
       return 1000 // High value for multi-select puzzle
     case 'map_tap':
       return 1000
-    case 'coastline_mcq':
     case 'silhouette_mcq':
       return 900
     case 'river_mcq':
       return 800
     case 'landmark_photo_mcq':
       return 750
-    case 'neighbor_count_mcq':
-    case 'subregion_outlier':
     case 'neighbor_mcq':
     case 'peak_mcq':
     case 'range_mcq':
     case 'unesco_mcq':
     case 'economy_exports_mcq':
     case 'gdp_tier':
-    case 'journey_puzzle':
       return 600
     case 'population_rank':
     case 'capital_mcq':
@@ -3653,7 +3640,6 @@ function getPointsForQuestion(type: QuestionType): number {
     case 'flag_match':
     case 'population_pair':
     case 'area_pair':
-    case 'landlocked_mcq':
     case 'region_mcq':
     default:
       return 400
@@ -3693,24 +3679,24 @@ function bboxCenter(bbox: [number, number, number, number]) {
 // Determine country type for contextual camera behavior
 function getCountryType(country: CountryMeta | null): 'island' | 'mountainous' | 'large' | 'small' | 'standard' {
   if (!country) return 'standard'
-  
+
   // Island: not landlocked, small area, or in island-heavy regions
   const isIsland = !country.landlocked && (
     country.area < 50000 || // Small area (km²)
     ['Oceania', 'Caribbean'].includes(country.subregion) ||
     country.subregion.includes('Island')
   )
-  
+
   // Mountainous: has mountain ranges or high peaks
-  const isMountainous = (country.mountainRanges?.length ?? 0) > 0 || 
-                        (country.highestPeak?.elevation ?? 0) > 3000
-  
+  const isMountainous = (country.mountainRanges?.length ?? 0) > 0 ||
+    (country.highestPeak?.elevation ?? 0) > 3000
+
   // Large: area > 1M km²
   const isLarge = country.area > 1000000
-  
+
   // Small: area < 100k km²
   const isSmall = country.area < 100000
-  
+
   if (isIsland) return 'island'
   if (isMountainous) return 'mountainous'
   if (isLarge) return 'large'

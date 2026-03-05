@@ -24,7 +24,6 @@ type QuestionType =
   | 'language_mcq'
   | 'population_pair'
   | 'area_pair'
-  | 'landlocked_mcq'
   | 'peak_mcq'
   | 'range_mcq'
   | 'region_mcq'
@@ -32,7 +31,6 @@ type QuestionType =
   | 'neighbor_count_mcq'
   | 'population_rank'
   | 'silhouette_mcq'
-  | 'coastline_mcq'
   | 'flag_colors_mcq'
   | 'unesco_mcq'
   | 'landmark_photo_mcq'
@@ -366,7 +364,6 @@ function AppTV() {
     language_mcq: [],
     population_pair: [],
     area_pair: [],
-    landlocked_mcq: [],
     peak_mcq: [],
     range_mcq: [],
     region_mcq: [],
@@ -374,7 +371,6 @@ function AppTV() {
     neighbor_count_mcq: [],
     population_rank: [],
     silhouette_mcq: [],
-    coastline_mcq: [],
     flag_colors_mcq: [],
     unesco_mcq: [],
     landmark_photo_mcq: [],
@@ -678,7 +674,7 @@ function AppTV() {
             id: 'background',
             type: 'background',
             paint: {
-              'background-color': theme === 'dark' ? '#0b0f14' : '#f0f4f8',
+              'background-color': theme === 'dark' ? '#000103' : '#ffffff',
             },
           },
         ],
@@ -706,7 +702,7 @@ function AppTV() {
             '#2ecc71',
             ['==', ['feature-state', 'flash'], 'incorrect'],
             '#e74c3c',
-            theme === 'dark' ? '#1a202a' : '#e1e8ed',
+            theme === 'dark' ? '#2d3644' : '#475569',
           ],
           'fill-opacity': [
             'case',
@@ -729,7 +725,7 @@ function AppTV() {
             '#38d27a',
             ['==', ['feature-state', 'flash'], 'incorrect'],
             '#ff5a5a',
-            theme === 'dark' ? '#2d3644' : '#b0c4de',
+            theme === 'dark' ? '#64748b' : '#020617',
           ],
           'line-width': [
             'case',
@@ -779,7 +775,7 @@ function AppTV() {
         type: 'line',
         source: 'countries',
         paint: {
-          'line-color': theme === 'dark' ? '#2d3644' : '#cbd5e1',
+          'line-color': theme === 'dark' ? '#64748b' : '#020617',
           'line-width': 1,
         },
       })
@@ -932,12 +928,11 @@ function AppTV() {
     if (!map || !mapLoaded || !currentQuestion.targetFeature) return
 
     const isMapTap = currentQuestion.type === 'map_tap'
-    const isCoastline = currentQuestion.type === 'coastline_mcq'
-    const zoom = isCoastline ? 2.5 : (isMapTap ? 0.85 : 1.2)
+    const zoom = isMapTap ? 0.85 : 1.2
 
     const center = bboxCenter(currentQuestion.targetFeature.bbox)
     const randomBearing = (Math.random() - 0.5) * 20 // ±10 deg
-    const dynamicPitch = currentQuestion.type === 'coastline_mcq' ? 0 : 35 + Math.random() * 25 // 35-60 deg
+    const dynamicPitch = 35 + Math.random() * 25 // 35-60 deg
 
     map.flyTo({
       center,
@@ -1938,7 +1933,6 @@ function buildNextQuestion(args: {
     'language_mcq',
     'population_pair',
     'area_pair',
-    'landlocked_mcq',
     'peak_mcq',
     'range_mcq',
     'region_mcq',
@@ -1952,7 +1946,6 @@ function buildNextQuestion(args: {
     'unesco_mcq',
     'landmark_photo_mcq',
     'silhouette_mcq',
-    'coastline_mcq',
   ]
 
   // Filter types by level
@@ -1969,7 +1962,7 @@ function buildNextQuestion(args: {
 
   // Level 8+: Detail & Characteristics (Data)
   if (args.level >= 8) {
-    levelTypes.push('population_pair', 'area_pair', 'city_mcq', 'currency_mcq', 'landlocked_mcq', 'region_mcq', 'population_tier', 'peak_mcq', 'range_mcq')
+    levelTypes.push('population_pair', 'area_pair', 'city_mcq', 'currency_mcq', 'region_mcq', 'population_tier', 'peak_mcq', 'range_mcq')
   }
 
   // Level 12+: Cultural & Hydrography
@@ -1983,7 +1976,7 @@ function buildNextQuestion(args: {
   }
 
   // Level 20+: Visual Mastery
-  if (args.level >= 20) levelTypes.push('coastline_mcq', 'landmark_photo_mcq')
+  if (args.level >= 20) levelTypes.push('landmark_photo_mcq')
 
   // Level 15+: Trivia & Knowledge
   if (args.level >= 15) {
@@ -2164,19 +2157,20 @@ function buildQuestionForType(
   }
 
   if (type === 'currency_mcq') {
-    const currencyCode = country.currencies?.[0]?.code ?? ''
-    if (!currencyCode) return null
+    const currencyName = country.currencies?.[0]?.name ?? ''
+    if (!currencyName) return null
+    const simplifiedName = getSimplifiedCurrencyName(currencyName)
     const slicedPool = getPoolForLevel(args.pools.currencyPool, args.level)
     const { options, correctIndex } = buildOptionSet(
       slicedPool,
       country,
-      (item) => item.currencies?.[0]?.code ?? '',
-      currencyCode,
+      (item) => getSimplifiedCurrencyName(item.currencies?.[0]?.name ?? ''),
+      simplifiedName,
     )
     return {
-      id: `${type} -${country.cca3} `,
+      id: `${type}-${country.cca3}`,
       type,
-      prompt: `Currency code for ${country.name} ? `,
+      prompt: `Currency of ${country.name}?`,
       options,
       correctIndex,
       targetCca3: country.cca3,
@@ -2247,17 +2241,6 @@ function buildQuestionForType(
     }
   }
 
-  if (type === 'landlocked_mcq') {
-    return {
-      id: `${type} -${country.cca3} `,
-      type,
-      prompt: `Is ${country.name} landlocked or coastal ? `,
-      options: ['Landlocked', 'Coastal'],
-      correctIndex: country.landlocked ? 0 : 1,
-      targetCca3: country.cca3,
-      displayCca3s: [country.cca3],
-    }
-  }
 
   if (type === 'peak_mcq') {
     const peakName = country.highestPeak?.name ?? ''
@@ -2551,22 +2534,6 @@ function buildQuestionForType(
     }
   }
 
-  if (type === 'coastline_mcq') {
-    const targetFeature = args.featureIndex.get(country.cca3 ?? '')
-    if (!targetFeature) return null
-    const slicedPool = getPoolForLevel(args.pools.countries, args.level)
-    const { options, correctIndex } = buildOptionSetForCountries(slicedPool, country)
-    return {
-      id: `${type} -${country.cca3} `,
-      type,
-      prompt: `Which island or coastline is shown here ? `,
-      options,
-      correctIndex,
-      targetCca3: country.cca3,
-      displayCca3s: [country.cca3],
-      targetFeature,
-    }
-  }
 
   if (type === 'flag_colors_mcq') {
     const hasThree = [
@@ -2640,23 +2607,21 @@ function getNextCountryForType(
                       ? args.pools.populationPool
                       : type === 'area_pair'
                         ? args.pools.areaPool
-                        : type === 'landlocked_mcq'
-                          ? args.pools.landlockedPool
-                          : type === 'peak_mcq'
-                            ? args.pools.peakPool
-                            : type === 'range_mcq'
-                              ? args.pools.rangePool
-                              : type === 'region_mcq' || type === 'subregion_outlier'
-                                ? args.pools.regionPool
-                                : type === 'unesco_mcq'
-                                  ? args.pools.unescoPool
-                                  : type === 'economy_exports_mcq'
-                                    ? args.pools.exportsPool
-                                    : type === 'gdp_tier'
-                                      ? args.pools.gdpPool
-                                      : type === 'landmark_photo_mcq'
-                                        ? args.pools.landmarkPool
-                                        : args.pools.countries
+                        : type === 'peak_mcq'
+                          ? args.pools.peakPool
+                          : type === 'range_mcq'
+                            ? args.pools.rangePool
+                            : type === 'region_mcq' || type === 'subregion_outlier'
+                              ? args.pools.regionPool
+                              : type === 'unesco_mcq'
+                                ? args.pools.unescoPool
+                                : type === 'economy_exports_mcq'
+                                  ? args.pools.exportsPool
+                                  : type === 'gdp_tier'
+                                    ? args.pools.gdpPool
+                                    : type === 'landmark_photo_mcq'
+                                      ? args.pools.landmarkPool
+                                      : args.pools.countries
   if (!pool.length) return null
 
   // Slice pool based on level
@@ -2789,6 +2754,32 @@ function buildOptionSetForCountries(pool: CountryMeta[], correct: CountryMeta) {
   return { options: finalOptions, correctIndex, optionCca3s }
 }
 
+function getSimplifiedCurrencyName(name: string): string {
+  const n = name.toLowerCase()
+  if (n.includes('dollar')) return 'Dollars'
+  if (n.includes('euro')) return 'Euros'
+  if (n.includes('pound')) return 'Pounds'
+  if (n.includes('yuan') || n.includes('renminbi')) return 'Yuan'
+  if (n.includes('yen')) return 'Yen'
+  if (n.includes('rupee')) return 'Rupees'
+  if (n.includes('franc')) return 'Francs'
+  if (n.includes('peso')) return 'Pesos'
+  if (n.includes('dinar')) return 'Dinars'
+  if (n.includes('dirham')) return 'Dirhams'
+  if (n.includes('krone') || n.includes('krona')) return 'Kroner'
+  if (n.includes('riyal') || n.includes('rial')) return 'Riyals'
+  if (n.includes('ruble') || n.includes('rouble')) return 'Rubles'
+  if (n.includes('shilling')) return 'Shillings'
+  if (n.includes('won')) return 'Won'
+
+  // Pluralize last word of the name if not matched above
+  const words = name.trim().split(' ')
+  const lastWord = words[words.length - 1]
+  if (lastWord.toLowerCase().endsWith('s')) return lastWord
+  return lastWord + 's'
+}
+
+
 function shuffle<T>(items: T[]) {
   const next = [...items]
   for (let i = next.length - 1; i > 0; i -= 1) {
@@ -2813,7 +2804,6 @@ function getPointsForQuestion(type: QuestionType): number {
   switch (type) {
     case 'map_tap':
       return 1000
-    case 'coastline_mcq':
     case 'silhouette_mcq':
       return 900
     case 'river_mcq':
@@ -2841,7 +2831,6 @@ function getPointsForQuestion(type: QuestionType): number {
     case 'flag_match':
     case 'population_pair':
     case 'area_pair':
-    case 'landlocked_mcq':
     case 'region_mcq':
     default:
       return 400
